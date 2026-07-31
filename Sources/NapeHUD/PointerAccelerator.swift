@@ -181,3 +181,11 @@ final class PointerAccelerator {
                        y: min(max(p.y, flipped.minY), flipped.maxY - 1))
     }
 }
+
+/// 加速の適用結果。設定画面にそのまま出せる文言と、足りない許可を持つ。
+struct AccelerationStatus {
+    enum Permission { case accessibility, inputMonitoring }
+    var running: Bool
+    var message: String
+    var permission: Permission?
+}

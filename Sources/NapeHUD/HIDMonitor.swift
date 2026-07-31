@@ -220,6 +220,22 @@ final class HIDMonitor {
         }
     }
 
+    /// 監視をやめる。参照を捨てるだけでも止まるが、明示的に閉じたほうが確実。
+    func stop() {
+        for (device, _) in interfaces {
+            IOHIDDeviceUnscheduleFromRunLoop(device, CFRunLoopGetMain(),
+                                             CFRunLoopMode.defaultMode.rawValue)
+            IOHIDDeviceClose(device, IOOptionBits(kIOHIDOptionsTypeNone))
+        }
+        interfaces.removeAll()
+        if let mgr = manager {
+            IOHIDManagerUnscheduleFromRunLoop(mgr, CFRunLoopGetMain(),
+                                              CFRunLoopMode.defaultMode.rawValue)
+            IOHIDManagerClose(mgr, IOOptionBits(kIOHIDOptionsTypeNone))
+        }
+        manager = nil
+    }
+
     var interfaceSummary: [String] {
         interfaces.values
             .map { "\($0.label) [\($0.connection.rawValue)] \($0.product)" }

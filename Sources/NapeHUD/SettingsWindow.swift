@@ -12,8 +12,9 @@ final class SettingsController: NSObject, NSWindowDelegate {
     private let configURL: URL
     private var config: Config
 
-    /// 加速の値を触ったら即座に反映する（効き具合は動かして確かめるものなので）
-    var onAccelerationChanged: ((AccelerationConfig) -> Void)?
+    /// 加速の値を触ったら即座に反映する（効き具合は動かして確かめるものなので）。
+    /// 戻り値の状態をそのまま画面に出す。生成に失敗した理由が分からないと直せないため。
+    var onAccelerationChanged: ((AccelerationConfig) -> AccelerationStatus)?
     var onOpenConfigFile: (() -> Void)?
     var onRequestRestart: (() -> Void)?
     var onClose: (() -> Void)?
@@ -39,6 +40,9 @@ final class SettingsController: NSObject, NSWindowDelegate {
     private let maxGainLabel = NSTextField(labelWithString: "")
     private let curveView = CurveView()
     private let accelNote = NSTextField(labelWithString: "")
+    private let accelStatus = NSTextField(labelWithString: "")
+    private var permissionButton: NSButton!
+    private var lastPermission: AccelerationStatus.Permission?
 
     // レイヤー名
     private var layerNameFields: [Int: NSTextField] = [:]
@@ -241,6 +245,14 @@ final class SettingsController: NSObject, NSWindowDelegate {
         accelNote.font = .systemFont(ofSize: 11)
         accelNote.textColor = .secondaryLabelColor
 
+        accelStatus.font = .systemFont(ofSize: 12, weight: .medium)
+        permissionButton = NSButton(title: "許可の設定を開く", target: self,
+                                    action: #selector(openPermission))
+        permissionButton.isHidden = true
+        let statusRow = NSStackView(views: [accelStatus, permissionButton])
+        statusRow.orientation = .horizontal
+        statusRow.spacing = 10
+
         return pane([
             accelEnabled,
             accelOnlyBall,
@@ -249,6 +261,7 @@ final class SettingsController: NSObject, NSWindowDelegate {
             row("最大になる速度", [fullSpeedSlider, fullSpeedLabel]),
             row("最大倍率", [maxGainSlider, maxGainLabel]),
             curveView,
+            statusRow,
             accelNote,
             note("⚠️ 有効にするとアクセシビリティの許可が必要。「Nape Pro のときだけ」には入力監視の許可も要る（許可しないと内蔵トラックパッドにも効いてしまうため、その場合は加速を止める）。"),
         ])
@@ -302,6 +315,9 @@ final class SettingsController: NSObject, NSWindowDelegate {
         }
     }
 
+    /// 画面を開いた時点の実際の状態を出す（設定値ではなく動作状況）
+    func showInitialAccelerationStatus(_ r: AccelerationStatus) { showAccelStatus(r) }
+
     private func syncSteppers() {
         secondsField.stringValue = String(format: "%.1f 秒", secondsStepper.doubleValue)
         scaleField.stringValue = String(format: "%.1f 倍", scaleStepper.doubleValue)
@@ -327,14 +343,33 @@ final class SettingsController: NSObject, NSWindowDelegate {
         curveView.config = a
         curveView.needsDisplay = true
         accelNote.stringValue = a.enabled
-            ? "変更はすぐ反映される。保存すると次回起動時も有効。"
+            ? "上の状態が「動作中」なら効いている。保存すると次回起動時も有効。"
             : "無効のあいだは権限も不要（今までどおりの動作）。"
     }
 
     @objc private func accelChanged() {
         syncAccelLabels()
         // 加速だけは即時反映する。動かして確かめるものなので。
-        onAccelerationChanged?(currentAcceleration())
+        guard let result = onAccelerationChanged?(currentAcceleration()) else { return }
+        showAccelStatus(result)
+    }
+
+    private func showAccelStatus(_ r: AccelerationStatus) {
+        accelStatus.stringValue = (r.running ? "● " : "○ ") + r.message
+        accelStatus.textColor = r.running ? .systemGreen : .systemOrange
+        lastPermission = r.permission
+        permissionButton.isHidden = r.permission == nil
+        permissionButton.title = r.permission == .inputMonitoring
+            ? "「入力監視」の設定を開く" : "「アクセシビリティ」の設定を開く"
+    }
+
+    /// 許可の画面を直接開く。どこを触ればよいか分からないと詰まるため。
+    @objc private func openPermission() {
+        let anchor = lastPermission == .inputMonitoring
+            ? "Privacy_ListenEvent" : "Privacy_Accessibility"
+        if let u = URL(string: "x-apple.systempreferences:com.apple.preference.security?\(anchor)") {
+            NSWorkspace.shared.open(u)
+        }
     }
 
     // MARK: - 保存
