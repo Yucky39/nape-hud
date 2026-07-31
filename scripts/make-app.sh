@@ -20,7 +20,32 @@ BUNDLE_ID="com.local.nape-hud"
 VERSION="1.0.0"
 BUILD_DIR="$ROOT/build"
 APP="$BUILD_DIR/$APP_NAME.app"
-IDENTITY="${CODESIGN_IDENTITY:--}"
+# 署名 ID を決める。
+#
+# ad-hoc 署名（"-"）だと指定要件が cdhash になり、再ビルドのたびに別アプリ扱いになる。
+# その結果、アクセシビリティ等の許可が毎回リセットされて何度も許可を求められる。
+# 証明書で署名すれば指定要件が証明書ベースになり、再ビルドしても許可が残る。
+# そのため、使える証明書があれば自動で使う。
+# 同名の証明書が複数あると名前指定では ambiguous で失敗するので、SHA-1 で指定する。
+pick_identity() {
+    [ -n "${CODESIGN_IDENTITY:-}" ] && { echo "$CODESIGN_IDENTITY"; return; }
+    local list line
+    list="$(security find-identity -v -p codesigning 2>/dev/null || true)"
+    for prefix in "Developer ID Application" "Apple Development" "Mac Developer"; do
+        line="$(echo "$list" | grep -F "\"$prefix" | head -1 || true)"
+        if [ -n "$line" ]; then
+            echo "$line" | awk '{print $2}'
+            return
+        fi
+    done
+    echo "-"
+}
+identity_name() {
+    [ "$1" = "-" ] && { echo "ad-hoc"; return; }
+    security find-identity -v -p codesigning 2>/dev/null \
+        | grep -F "$1" | head -1 | sed 's/.*"\(.*\)"/\1/' || echo "$1"
+}
+IDENTITY="$(pick_identity)"
 
 echo "==> リリースビルド"
 swift build -c release
@@ -78,7 +103,13 @@ $ICON_ENTRY
 </plist>
 PLIST
 
-echo "==> 署名 (identity: $IDENTITY)"
+if [ "$IDENTITY" = "-" ]; then
+    echo "==> 署名: ad-hoc（証明書が見つかりません）"
+    echo "    ⚠️ 再ビルドのたびに別アプリ扱いになり、アクセシビリティ等の許可を"
+    echo "       毎回求められます。証明書があれば自動で使います。"
+else
+    echo "==> 署名: $(identity_name "$IDENTITY")"
+fi
 codesign --force --sign "$IDENTITY" --timestamp=none \
     --identifier "$BUNDLE_ID" \
     "$APP/Contents/MacOS/$APP_NAME" >/dev/null

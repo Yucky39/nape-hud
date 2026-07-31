@@ -672,12 +672,42 @@ nape-hud learn -s 20
 そのため「ターミナルでは動くのにアプリでは動かない」ことが起こり得る。
 `keyFallback` を使うなら、アプリをアクセシビリティに登録すること。
 
-ad-hoc 署名（既定）だと再ビルドで署名が変わり、許可が外れて再度求められることがある。
-Developer ID を持っている場合は署名を固定できる:
+### ⚠️ 「許可済みなのに毎回聞かれる」場合
+
+**ad-hoc 署名が原因。** ad-hoc だとアプリの識別子が
+バイナリのハッシュ（`cdhash`）になるため、**再ビルドのたびに macOS が別アプリとみなす**。
+システム設定の一覧に残っている項目は古いハッシュに紐づいた抜け殻で、新しいバイナリには効かない。
+
+`make-app.sh` は**使える証明書があれば自動で署名に使う**
+（`Developer ID Application` → `Apple Development` → `Mac Developer` の順）。
+証明書で署名すると識別子が証明書ベースになり、再ビルドしても許可が維持される。
+
+```bash
+# 現在の識別子を確認する
+codesign -d -r- /Applications/NapeHUD.app
+
+# ad-hoc（毎回聞かれる）
+# designated => cdhash H"78a69c8b31eb…"
+
+# 証明書あり（許可が維持される）
+# designated => identifier "com.local.nape-hud" and anchor apple generic and certificate leaf…
+```
+
+証明書を明示したい場合:
 
 ```bash
 CODESIGN_IDENTITY="Developer ID Application: ..." ./scripts/make-app.sh --install
 ```
+
+ad-hoc から証明書に切り替えた直後は、古い許可の残骸を消してから許可し直す:
+
+```bash
+tccutil reset Accessibility com.local.nape-hud
+tccutil reset ListenEvent com.local.nape-hud
+```
+
+証明書が 1 枚も無い環境では ad-hoc になり、この問題は避けられない
+（ビルド時に警告が出る）。
 
 ---
 
