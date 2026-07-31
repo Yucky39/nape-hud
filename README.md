@@ -149,6 +149,31 @@ nape-hud learn          # 各フェーズ 25 秒（-s 20 などで変更可）
 > 物理ボタンとキーコードの並び順の対応は VIA ではデバイスから取得できない
 > （配列情報は VIA 定義ファイル側が持つ）。
 
+### ポインタ加速をホスト側でやっている理由
+
+ファーム側で加速を実装する案は現時点では成立しない。Keychron は
+[`Keychron/zmk`](https://github.com/Keychron/zmk)（`rtl8762g` ブランチが活発）、
+[`Keychron/hal_realtek`](https://github.com/Keychron/hal_realtek)、Zephyr フォークを
+公開しているが、**Nape Pro のボード定義も PAW3222 のドライバも未公開**（全リポジトリ検索で
+"nape" は 0 件、PAW も 0 件）。書き込み経路も非公開で、自前ビルドを流すと文鎮化のおそれがある。
+
+そのためホスト側でカーソル移動イベントを書き換える方式を採った。
+
+**デバイス判別の実測結果**: カーソル移動イベントには発生元デバイスの情報が無い。
+senderID と言われる非公開フィールド 87 を実機で比較したところ、
+トラックボールでも内蔵トラックパッドでも同じ値（`54240`）で判別できなかった。
+そのため Nape Pro の HID 入力（usage page 1）を併せて監視し、
+直前に動きがあったかで判定している（`acceleration.onlyTrackball`）。
+
+効果の実測（合成イベント 40 発 × 30px、`maxGain: 3.0`）:
+
+| | 合計移動量 | 実効倍率 |
+|---|---|---|
+| 加速なし | 1020 px | 0.85x |
+| 加速あり | 3360 px | **2.80x** |
+
+上限 3.0x にわずかに届かないのは、速度の指数移動平均が立ち上がるまでの数イベント分。
+
 ### 実機の仕様（Keychron Launcher で確認）
 
 | 項目 | 内容 |
@@ -385,6 +410,7 @@ launchctl bootout gui/$(id -u)/com.local.nape-hud
 | `Sources/NapeHUD/CalibrationWindow.swift` | アプリ内校正の画面と設定反映 |
 | `Sources/NapeHUD/ConfigWriter.swift` | 設定ファイルの外科的書き換え（コメントを壊さない） |
 | `Sources/NapeHUD/StatusItem.swift` | メニューバー常駐項目 |
+| `Sources/NapeHUD/PointerAccelerator.swift` | ポインタ加速（任意機能・既定は無効） |
 | `Sources/NapeHUD/VIAClient.swift` | VIA プロトコルでキーマップを読み出す |
 | `Sources/NapeHUD/Keycode.swift` | キーコード → 表示名 |
 | `Sources/NapeHUD/KeymapReport.swift` | キーアサインの整形（CLI と画面で共用） |

@@ -28,6 +28,23 @@ extension Config {
         poll = c.opt(.poll, Poll())
         calibration = c.opt(.calibration, CalibrationConfig())
         keymap = c.opt(.keymap, KeymapConfig())
+        acceleration = c.opt(.acceleration, AccelerationConfig())
+    }
+}
+
+extension AccelerationConfig {
+    init(from decoder: Swift.Decoder) throws {
+        self.init()
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        enabled = c.opt(.enabled, enabled)
+        thresholdSpeed = c.opt(.thresholdSpeed, thresholdSpeed)
+        fullSpeed = c.opt(.fullSpeed, fullSpeed)
+        baseGain = c.opt(.baseGain, baseGain)
+        maxGain = c.opt(.maxGain, maxGain)
+        maxDeltaPerEvent = c.opt(.maxDeltaPerEvent, maxDeltaPerEvent)
+        onlyTrackball = c.opt(.onlyTrackball, onlyTrackball)
+        trackballActiveWindowMs = c.opt(.trackballActiveWindowMs, trackballActiveWindowMs)
+        perLayerGain = c.opt(.perLayerGain, perLayerGain)
     }
 }
 

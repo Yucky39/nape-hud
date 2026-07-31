@@ -14,11 +14,15 @@ final class StatusItemController {
     private let detailItem = NSMenuItem(title: "", action: nil, keyEquivalent: "")
     private let connectionItem = NSMenuItem(title: "", action: nil, keyEquivalent: "")
     private let warningItem = NSMenuItem(title: "", action: nil, keyEquivalent: "")
+    private let accelItem = NSMenuItem(title: "ポインタ加速", action: nil, keyEquivalent: "")
 
     var onShowNow: (() -> Void)?
     var onTest: (() -> Void)?
     var onCalibrate: (() -> Void)?
     var onShowKeymap: (() -> Void)?
+    /// ポインタ加速の入り切り。戻り値は切り替え後の状態。
+    /// 設定していない（= 加速が動いていない）ときは項目を出さない。
+    var onToggleAcceleration: (() -> Bool)?
     var onOpenConfig: (() -> Void)?
     var onRelaunch: (() -> Void)?
 
@@ -46,6 +50,11 @@ final class StatusItemController {
         menu.addItem(.separator())
         add("いまの状態を表示", #selector(showNow))
         add("HUD のテスト表示", #selector(test))
+        accelItem.target = self
+        accelItem.action = #selector(toggleAcceleration)
+        accelItem.isHidden = true
+        menu.addItem(accelItem)
+
         menu.addItem(.separator())
         add("キーアサインを表示…", #selector(showKeymap))
         add("向きを校正…", #selector(calibrate))
@@ -101,6 +110,17 @@ final class StatusItemController {
     @objc private func test() { onTest?() }
     @objc private func calibrate() { onCalibrate?() }
     @objc private func showKeymap() { onShowKeymap?() }
+
+    /// 加速が動いているときだけ項目を出す（設定で無効なら存在しない機能なので隠す）
+    func setAcceleration(enabled: Bool) {
+        accelItem.isHidden = false
+        accelItem.state = enabled ? .on : .off
+    }
+
+    @objc private func toggleAcceleration() {
+        guard let now = onToggleAcceleration?() else { return }
+        accelItem.state = now ? .on : .off
+    }
     @objc private func openConfig() { onOpenConfig?() }
     @objc private func relaunch() { onRelaunch?() }
     @objc private func quit() { NSApp.terminate(nil) }

@@ -406,6 +406,36 @@ case "selftest":
         if !ok { failures += 1 }
     }
 
+    // ポインタ加速のカーブ検証（設定が無効でも計算そのものは確かめる）
+    print("")
+    print("── ポインタ加速のカーブ検証 ──")
+    do {
+        let a = config.acceleration
+        func g(_ v: Double) -> Double { PointerAccelerator.gain(forSpeed: v, config: a) }
+        let below = g(max(a.thresholdSpeed - 50, 0))
+        let above = g(a.fullSpeed + 500)
+        let mid = g((a.thresholdSpeed + a.fullSpeed) / 2)
+        print(String(format: "  設定: %.1fx → %.1fx / %.0f〜%.0f px/s%@",
+                     a.baseGain, a.maxGain, a.thresholdSpeed, a.fullSpeed,
+                     (a.enabled ? "" : "（現在は無効）") as NSString))
+        print(String(format: "  低速(%.0f)=%.2fx  中速(%.0f)=%.2fx  高速(%.0f)=%.2fx",
+                     max(a.thresholdSpeed - 50, 0), below,
+                     (a.thresholdSpeed + a.fullSpeed) / 2, mid,
+                     a.fullSpeed + 500, above))
+        var ok = abs(below - a.baseGain) < 0.001 && abs(above - a.maxGain) < 0.001
+        // 単調増加であること（途中で戻ると操作感が破綻する）
+        var prev = -1.0
+        for i in 0...20 {
+            let v = a.thresholdSpeed + (a.fullSpeed - a.thresholdSpeed) * Double(i) / 20
+            let cur = g(v)
+            if cur < prev - 0.0001 { ok = false; break }
+            prev = cur
+        }
+        print(ok ? "  ✅ しきい値未満は等倍、上限で最大、間は単調増加"
+                 : "  ❌ カーブが期待どおりではありません")
+        if !ok { failures += 1 }
+    }
+
     // 校正ウインドウのレイアウト検証。
     // 内容の必要サイズがウインドウ内寸を超えていると、ボタン列が見えなくなる。
     print("")
@@ -795,6 +825,86 @@ case "run":
         do { try watcher.start() } catch {
             FileHandle.standardError.write("\(error.localizedDescription)\n".data(using: .utf8)!)
         }
+    }
+
+    // ポインタ加速（任意機能・既定は無効）
+    var accelerator: PointerAccelerator?
+    var trackballMonitor: HIDMonitor?
+    var lastTrackballMotion = Date.distantPast
+    if config.acceleration.enabled {
+        let accel = config.acceleration
+        var ready = true
+
+        if !KeyWatcher.accessibilityGranted {
+            KeyWatcher.promptAccessibility()
+            FileHandle.standardError.write("""
+                ⚠️  ポインタ加速にはアクセシビリティの許可が必要です。
+                    システム設定 → プライバシーとセキュリティ → アクセシビリティ で
+                    NapeHUD を許可してから再起動してください。
+
+                """.data(using: .utf8)!)
+            status?.showWarning("ポインタ加速: アクセシビリティ未許可")
+            ready = false
+        }
+
+        // トラックボール由来だけに効かせるには、その動きを HID 側で見る必要がある。
+        // ポインタ面（usage page 1）の監視には「入力監視」の許可がいる。
+        if ready, accel.onlyTrackball {
+            if inputMonitoringGranted() {
+                let tb = HIDMonitor(match: config.device, allUsagePages: true)
+                tb.onReport = { ev in
+                    // ポインタ/キーボード面のレポート = 本体を操作している
+                    if ev.usagePage == 0x01 { lastTrackballMotion = Date() }
+                }
+                do {
+                    try tb.start()
+                    trackballMonitor = tb
+                } catch {
+                    FileHandle.standardError.write(
+                        "⚠️  ポインタ加速: 本体の動きを監視できません。\(error.localizedDescription)\n"
+                            .data(using: .utf8)!)
+                    status?.showWarning("ポインタ加速: 本体の監視に失敗")
+                    ready = false
+                }
+            } else {
+                _ = requestInputMonitoring()
+                FileHandle.standardError.write("""
+                    ⚠️  ポインタ加速を onlyTrackball で使うには「入力監視」の許可が必要です。
+                        許可しない場合、内蔵トラックパッドにも加速がかかってしまうため
+                        加速を有効にしません。
+                        全ポインタに効かせてよいなら acceleration.onlyTrackball を false にしてください。
+
+                    """.data(using: .utf8)!)
+                status?.showWarning("ポインタ加速: 入力監視が未許可のため停止中")
+                ready = false
+            }
+        }
+
+        if ready {
+            let a = PointerAccelerator(config: accel)
+            let window = Double(accel.trackballActiveWindowMs) / 1000
+            a.isTrackballActive = { Date().timeIntervalSince(lastTrackballMotion) < window }
+            a.currentLayer = { decoder.state.layer }
+            do {
+                try a.start()
+                accelerator = a
+                status?.setAcceleration(enabled: true)
+                // trackballMonitor は保持し続けないと解放されて通知が止まる
+                let scope = trackballMonitor != nil ? "Nape Pro のみ" : "全ポインタ"
+                let summary = "ポインタ加速: 有効（\(accel.baseGain)x → \(accel.maxGain)x"
+                    + " / \(Int(accel.thresholdSpeed))〜\(Int(accel.fullSpeed)) px/s"
+                    + " / \(scope)）\n"
+                FileHandle.standardError.write(summary.data(using: .utf8)!)
+            } catch {
+                FileHandle.standardError.write("\(error.localizedDescription)\n".data(using: .utf8)!)
+                status?.showWarning("ポインタ加速を開始できませんでした")
+            }
+        }
+    }
+    status?.onToggleAcceleration = {
+        guard let a = accelerator else { return false }
+        a.isEnabled.toggle()
+        return a.isEnabled
     }
 
     // 自発通知しないファーム向けの定期問い合わせ

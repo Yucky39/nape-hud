@@ -23,10 +23,12 @@ struct Config: Codable {
     var calibration: CalibrationConfig = .init()
     /// キーアサイン表示（VIA プロトコル読み出し）の設定
     var keymap: KeymapConfig = .init()
+    /// ポインタ加速（任意機能。既定は無効）
+    var acceleration: AccelerationConfig = .init()
 
     enum CodingKeys: String, CodingKey {
         case device, hud, layerNames, angleNames, dpiNames, rules, keyFallback, poll,
-             calibration, keymap
+             calibration, keymap, acceleration
     }
 
     static let defaultPath = FileManager.default
@@ -287,6 +289,45 @@ struct KeymapConfig: Codable {
     var layerCount: Int = 8
 
     enum CodingKeys: String, CodingKey { case keysPerLayer, layerCount }
+}
+
+/// ポインタ加速。**任意機能で既定は無効**。
+///
+/// 小径トラックボールは 1 回のスワイプで稼げる移動量が小さいので、
+/// 速く転がしたときだけ移動量を増幅して大画面でも端まで届くようにする。
+///
+/// ファームウェアではなくホスト側で行う。カーソル移動イベントを捕まえて
+/// 速度に応じた倍率をかけ直すため、**アクセシビリティ権限が必要**。
+struct AccelerationConfig: Codable {
+    var enabled: Bool = false
+
+    /// 加速が効き始める速度 (px/秒)。これ未満は素の動きのままにして細かい操作を保つ。
+    var thresholdSpeed: Double = 300
+    /// 最大倍率に達する速度 (px/秒)
+    var fullSpeed: Double = 2200
+    /// しきい値未満での倍率。1.0 なら等倍（素の感度）
+    var baseGain: Double = 1.0
+    /// fullSpeed 以上での倍率
+    var maxGain: Double = 3.0
+    /// 1 イベントあたりの移動量の上限 (px)。暴れ防止の安全弁
+    var maxDeltaPerEvent: Double = 240
+
+    /// Nape Pro を操作しているときだけ加速する。
+    /// カーソル移動イベントからは発生元のデバイスが分からないため、
+    /// Nape Pro の HID 入力を併せて監視して直前に動きがあったかで判定する。
+    /// **この判定には「入力監視」の許可が必要**（false なら不要だが全ポインタに効く）。
+    var onlyTrackball: Bool = true
+    /// 「直前」とみなす時間 (ミリ秒)
+    var trackballActiveWindowMs: Int = 200
+
+    /// レイヤーごとの倍率の上書き。キーはレイヤー番号（状態通知の 1〜8）。
+    /// 例 {"2": 1.0} でレイヤー 2 だけ加速を切る
+    var perLayerGain: [String: Double] = [:]
+
+    enum CodingKeys: String, CodingKey {
+        case enabled, thresholdSpeed, fullSpeed, baseGain, maxGain, maxDeltaPerEvent,
+             onlyTrackball, trackballActiveWindowMs, perLayerGain
+    }
 }
 
 struct Poll: Codable {
