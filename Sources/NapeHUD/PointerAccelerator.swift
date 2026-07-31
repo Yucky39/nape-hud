@@ -12,7 +12,8 @@ import AppKit
 /// そのため「Nape Pro の HID 入力が直前にあったか」を別途監視して判定する
 /// （`isTrackballActive` に外から渡す）。
 final class PointerAccelerator {
-    private let config: AccelerationConfig
+    /// 設定画面から動かしながら調整できるよう可変にしてある
+    private(set) var config: AccelerationConfig
     private var tap: CFMachPort?
 
     /// 直前に Nape Pro が動いていたか。onlyTrackball のときだけ参照する。
@@ -69,6 +70,14 @@ final class PointerAccelerator {
     /// 実行中に切り替えられるようにしておく（効き具合を試すため）
     var isEnabled = true {
         didSet { if let tap { CGEvent.tapEnable(tap: tap, enable: isEnabled) } }
+    }
+
+    /// 設定画面での変更を即座に効かせる。
+    /// カーブは動かして確かめるものなので、再起動を待たせない。
+    func update(_ newConfig: AccelerationConfig) {
+        config = newConfig
+        isEnabled = newConfig.enabled
+        resetSmoothing()
     }
 
     // MARK: -

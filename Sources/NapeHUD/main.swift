@@ -463,6 +463,22 @@ case "selftest":
         print("  angle ルールが無いのでスキップしました")
     }
 
+    print("")
+    print("── 設定ウインドウのレイアウト検証 ──")
+    do {
+        _ = NSApplication.shared
+        let sw = SettingsController(config: config, configURL: configPath ?? Config.defaultPath)
+        for pane in sw.paneFits {
+            let ok = pane.needed.height <= pane.available.height + 0.5
+                && pane.needed.width <= pane.available.width + 0.5
+            print(String(format: "  %@タブ: 必要 %.0f×%.0f / 収まる範囲 %.0f×%.0f  %@",
+                         pane.label as NSString, pane.needed.width, pane.needed.height,
+                         pane.available.width, pane.available.height,
+                         (ok ? "✅" : "❌ はみ出しています") as NSString))
+            if !ok { failures += 1 }
+        }
+    }
+
     // 設定ファイルへの書き戻し（アプリ内校正で使う経路）を一時コピーで検証する。
     // コメント付き JSON を壊さずに map だけ差し替えられているかを確かめる。
     print("")
@@ -475,6 +491,36 @@ case "selftest":
         do {
             try FileManager.default.copyItem(at: srcURL, to: tmp)
             let sample = "{ \"1\": 0, \"2\": 90, \"3\": 180, \"0\": 270 }"
+            // 設定画面からの保存経路（複数の値をまとめて置換）
+            let edits: [(path: [String], json: String)] = [
+                (["hud", "seconds"], "3.5"),
+                (["hud", "position"], "\"center\""),
+                (["hud", "showAngleDial"], "false"),
+                (["hud", "layerNumberOffset"], "-1"),
+                (["acceleration", "enabled"], "true"),
+                (["acceleration", "maxGain"], "4.5"),
+                (["layerNames"], "{ \"1\": \"テスト\" }"),
+            ]
+            if case .written = try ConfigWriter.setValues(edits, in: tmp) {
+                let r = try Config.load(tmp)
+                let ok = r.hud.seconds == 3.5 && r.hud.position == "center"
+                    && r.hud.showAngleDial == false && r.hud.layerNumberOffset == -1
+                    && r.acceleration.enabled == true && r.acceleration.maxGain == 4.5
+                    && r.layerNames["1"] == "テスト"
+                    // 触っていない項目が保たれているか
+                    && r.rules.count == config.rules.count
+                    && r.device.usagePages == config.device.usagePages
+                print(ok ? "  ✅ 設定画面からの保存（7 項目）が正しく反映され、他の項目も無傷"
+                         : "  ❌ 設定画面からの保存結果が期待と違います")
+                if !ok { failures += 1 }
+                let text = try String(contentsOf: tmp, encoding: .utf8)
+                let comments = text.components(separatedBy: "\"//").count - 1
+                print("  コメントキー: \(comments) 個 残存（保存後）")
+            } else {
+                print("  ❌ 設定画面からの保存で対象が見つかりませんでした")
+                failures += 1
+            }
+
             switch try ConfigWriter.updateAngleMap(sample, in: tmp) {
             case .written:
                 let after = try Data(contentsOf: tmp)
@@ -905,6 +951,22 @@ case "run":
         guard let a = accelerator else { return false }
         a.isEnabled.toggle()
         return a.isEnabled
+    }
+
+    // 設定画面。加速の値だけは動かしながら調整できるよう即時反映する。
+    var settingsWindow: SettingsController?
+    status?.onOpenSettings = {
+        if let w = settingsWindow { w.show(); return }
+        let w = SettingsController(config: config, configURL: configPath ?? Config.defaultPath)
+        w.onAccelerationChanged = { newAccel in
+            accelerator?.update(newAccel)
+            status?.setAcceleration(enabled: newAccel.enabled && accelerator != nil)
+        }
+        w.onOpenConfigFile = { status?.onOpenConfig?() }
+        w.onRequestRestart = { status?.onRelaunch?() }
+        w.onClose = { settingsWindow = nil }
+        settingsWindow = w
+        w.show()
     }
 
     // 自発通知しないファーム向けの定期問い合わせ

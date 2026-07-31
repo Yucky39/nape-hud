@@ -23,6 +23,7 @@ final class StatusItemController {
     /// ポインタ加速の入り切り。戻り値は切り替え後の状態。
     /// 設定していない（= 加速が動いていない）ときは項目を出さない。
     var onToggleAcceleration: (() -> Bool)?
+    var onOpenSettings: (() -> Void)?
     var onOpenConfig: (() -> Void)?
     var onRelaunch: (() -> Void)?
 
@@ -58,6 +59,10 @@ final class StatusItemController {
         menu.addItem(.separator())
         add("キーアサインを表示…", #selector(showKeymap))
         add("向きを校正…", #selector(calibrate))
+        menu.addItem(.separator())
+        let settings = NSMenuItem(title: "設定…", action: #selector(openSettings), keyEquivalent: ",")
+        settings.target = self
+        menu.addItem(settings)
         add("設定ファイルを開く", #selector(openConfig))
         add("設定を再読み込み（再起動）", #selector(relaunch))
         menu.addItem(.separator())
@@ -121,6 +126,7 @@ final class StatusItemController {
         guard let now = onToggleAcceleration?() else { return }
         accelItem.state = now ? .on : .off
     }
+    @objc private func openSettings() { onOpenSettings?() }
     @objc private func openConfig() { onOpenConfig?() }
     @objc private func relaunch() { onRelaunch?() }
     @objc private func quit() { NSApp.terminate(nil) }

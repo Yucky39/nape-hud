@@ -410,6 +410,7 @@ launchctl bootout gui/$(id -u)/com.local.nape-hud
 | `Sources/NapeHUD/CalibrationWindow.swift` | アプリ内校正の画面と設定反映 |
 | `Sources/NapeHUD/ConfigWriter.swift` | 設定ファイルの外科的書き換え（コメントを壊さない） |
 | `Sources/NapeHUD/StatusItem.swift` | メニューバー常駐項目 |
+| `Sources/NapeHUD/SettingsWindow.swift` | 設定画面（加速カーブの図つき） |
 | `Sources/NapeHUD/PointerAccelerator.swift` | ポインタ加速（任意機能・既定は無効） |
 | `Sources/NapeHUD/VIAClient.swift` | VIA プロトコルでキーマップを読み出す |
 | `Sources/NapeHUD/Keycode.swift` | キーコード → 表示名 |
