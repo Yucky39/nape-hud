@@ -42,11 +42,15 @@ final class PointerAccelerator {
     /// 自分が流し直したイベントの目印。これが無いと自分のイベントを無限に増幅してしまう。
     static let marker: Int64 = 0x4E415045      // 'NAPE'
 
-    /// --debug のときだけ実効倍率を集計して出す
+    /// --debug のときだけ実効倍率を集計して出す。
+    /// 素通しした分も母数に入れないと「最大倍率」と比べられる数字にならない。
     var debug = false
-    private var rawTravel = 0.0
-    private var outTravel = 0.0
-    private var amplified = 0
+    private var rawTravel = 0.0        // 元の移動量（素通し分も含む）
+    private var outTravel = 0.0        // 実際の移動量（素通し分も含む）
+    private var seen = 0               // 対象となったイベント数
+    private var amplified = 0          // うち増幅したもの
+    private var gainSum = 0.0          // 増幅したものの倍率の合計
+    private var peakSpeed = 0.0
 
     init(config: AccelerationConfig) {
         self.config = config
@@ -126,7 +130,16 @@ final class PointerAccelerator {
         }
 
         let gain = gainFor(dx: dx, dy: dy)
-        guard abs(gain - 1.0) > 0.001 else { return Unmanaged.passUnretained(event) }
+        if debug {
+            seen += 1
+            rawTravel += abs(dx) + abs(dy)
+            outTravel += abs(dx) + abs(dy)     // 増幅した分は後で足す
+            peakSpeed = max(peakSpeed, smoothedSpeed)
+        }
+        guard abs(gain - 1.0) > 0.001 else {
+            if debug { reportIfNeeded() }
+            return Unmanaged.passUnretained(event)
+        }
 
         // 追加で動かす量。端数を持ち越さないと遅い動きで移動量が失われる。
         let wantX = dx * (gain - 1) + carryX
@@ -164,16 +177,28 @@ final class PointerAccelerator {
         synth.post(tap: .cghidEventTap)
 
         if debug {
-            rawTravel += abs(dx) + abs(dy)
-            outTravel += abs(dx + extraX) + abs(dy + extraY)
+            outTravel += abs(extraX) + abs(extraY)
             amplified += 1
-            if amplified % 200 == 0 {
-                let msg = String(format: "加速: %d 件 / 元 %.0f px → %.0f px（実効 %.2fx）\n",
-                                 amplified, rawTravel, outTravel, outTravel / max(rawTravel, 1))
-                FileHandle.standardError.write(msg.data(using: .utf8)!)
-            }
+            gainSum += gain
+            reportIfNeeded()
         }
         return nil      // 元イベントは破棄
+    }
+
+    /// 集計結果を定期的に出す。
+    /// 「実効倍率」は素通し分も母数に入れた全体平均なので、最大倍率より必ず低くなる。
+    private func reportIfNeeded() {
+        guard seen > 0, seen % 400 == 0 else { return }
+        let overall = outTravel / max(rawTravel, 1)
+        let avgWhenAmplified = amplified > 0 ? gainSum / Double(amplified) : 1
+        let share = Int(Double(amplified) / Double(seen) * 100)
+        let l1 = String(format: "加速: %d 件（増幅 %d%%）/ 元 %.0f px \u{2192} %.0f px\n",
+                        seen, share, rawTravel, outTravel)
+        let l2 = String(format: "     実効倍率 %.2fx（全体平均）  増幅時の平均 %.2fx  設定上限 %.2fx\n",
+                        overall, avgWhenAmplified, config.maxGain)
+        let l3 = String(format: "     到達した最高速度 %.0f px/s（上限に達するのは %.0f px/s 以上）\n",
+                        peakSpeed, config.fullSpeed)
+        FileHandle.standardError.write((l1 + l2 + l3).data(using: .utf8)!)
     }
 
     /// 速度 (px/秒) → 倍率。しきい値未満は素のまま、fullSpeed 以上で maxGain。
