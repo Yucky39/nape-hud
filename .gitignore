@@ -1,0 +1,12 @@
+# Swift Package Manager のビルド成果物
+.build/
+
+# アプリバンドル・pkg の出力先（scripts/make-app.sh, scripts/make-pkg.sh で生成）
+build/
+
+# 生成物
+*.icns
+*.pkg
+
+# macOS
+.DS_Store

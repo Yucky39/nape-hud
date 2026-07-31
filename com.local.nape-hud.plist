@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.local.nape-hud</string>
+
+  <!--
+    アプリバンドル内の実行ファイルを直接指定する。
+    こうしないとバンドルの識別（＝TCC の許可）が効かない。
+
+    ↓ NapeHUD.app の実際の場所に書き換えてください。
+      /Applications へ入れた場合: /Applications/NapeHUD.app/Contents/MacOS/NapeHUD
+
+    ※ システム設定 → 一般 → ログイン項目 にアプリを追加するだけでも自動起動できる。
+      LaunchAgent を使うのは、落ちたときに自動復帰させたい場合。
+  -->
+  <key>ProgramArguments</key>
+  <array>
+    <string>/Applications/NapeHUD.app/Contents/MacOS/NapeHUD</string>
+    <string>run</string>
+  </array>
+
+  <key>RunAtLoad</key>
+  <true/>
+  <key>KeepAlive</key>
+  <true/>
+  <!-- メニューバーとオーバーレイを扱うのでユーザーの Aqua セッションに属させる -->
+  <key>LimitLoadToSessionType</key>
+  <string>Aqua</string>
+
+  <key>StandardOutPath</key>
+  <string>/tmp/nape-hud.log</string>
+  <key>StandardErrorPath</key>
+  <string>/tmp/nape-hud.log</string>
+</dict>
+</plist>

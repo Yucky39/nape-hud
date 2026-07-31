@@ -1,0 +1,235 @@
+{
+  "//": "~/.config/nape-hud/config.json にコピーして使う。書きたい項目だけ書けばよい（欠けた項目は既定値）。",
+
+  "device": {
+    "vendorId": 13364,
+    "productIds": [1088],
+    "productNameContains": ["Nape"],
+    "//connectionNames": "2.4GHz ドングルや BT で PID が変わる場合はここで接続種別を明示する",
+    "connectionNames": {},
+
+    "//usagePages": [
+      "監視する HID インターフェース（PrimaryUsagePage）。",
+      "0xFF60 = 65376（raw HID / 状態通知）、0x008C = 140（Keychron ベンダチャネル）。",
+      "⚠️ キーボード面 0x0001 を加えたり空配列（全面）にすると macOS の「入力監視」許可が",
+      "   必須になり、未許可だと IOHIDManagerOpen 自体が失敗して 1 件も受信できなくなる。",
+      "   状態通知はベンダ面に来るので、既定のままなら許可なしで動く。"
+    ],
+    "usagePages": [65376, 140]
+  },
+
+  "hud": {
+    "seconds": 2.2,
+    "position": "topRight",
+    "margin": 28,
+    "scale": 1.0,
+    "showConnection": true,
+    "showOnConnectionChange": true,
+    "showAngleDial": true,
+    "followsMouseScreen": true,
+
+    "//showMenuBarIcon": "メニューバー常駐項目。false にすると終了操作ができなくなるので注意",
+    "showMenuBarIcon": true,
+    "//menuBarShowsLayer": "メニューバーのアイコンに現在のレイヤー番号を添える",
+    "menuBarShowsLayer": true,
+
+    "//layerNumberOffset": [
+      "レイヤー番号の表示補正。",
+      "デバイスの状態通知は 1〜8 を返すが、Keychron Launcher は同じレイヤーを 0〜7 と表示する。",
+      "-1 にすると Launcher の番号に揃う（layerNames のキーも補正後の番号で引く）。",
+      "0 のままなら状態通知どおりの 1〜8 で表示する。"
+    ],
+    "layerNumberOffset": 0
+  },
+
+  "//layerNames": [
+    "レイヤー番号 → 表示名。キーは hud.layerNumberOffset を適用した後の番号。",
+    "レイヤーは全 8 段。状態通知は 1〜8、Launcher の表示は 0〜7（同じものの呼び方の違い）。",
+    "layerNumberOffset を -1 にした場合はキーを 0〜7 に書き換えること。"
+  ],
+  "layerNames": {
+    "1": "Layer 1",
+    "2": "Layer 2",
+    "3": "Layer 3",
+    "4": "Layer 4",
+    "5": "Layer 5",
+    "6": "Layer 6",
+    "7": "Layer 7",
+    "8": "Layer 8"
+  },
+
+  "//dpiNames": [
+    "DPI 値 → 表示名の差し替え（任意）。キーは rules[].dpi.map 適用後の値。",
+    "既定では「1600 DPI」のように数値がそのまま出るので、通常は空でよい。",
+    "呼び名を付けたいときだけ使う。例 {\"800\": \"精密\", \"3200\": \"高速\"}"
+  ],
+  "dpiNames": {},
+
+  "//angleNames": "角度（map 適用後の値）→ 表示名。省略した角度は「135°」のように度数だけ表示される。",
+  "angleNames": {
+    "0": "0°",
+    "45": "45°",
+    "90": "90°",
+    "135": "135°",
+    "180": "180°",
+    "225": "225°",
+    "270": "270°",
+    "315": "315°"
+  },
+
+  "//rules": [
+    "下のルールは Nape Pro (PID 0x0440) 実機で `nape-hud learn` により確定させたもの:",
+    "  FF60/61 の 32 バイトレポート、cmd=0xA3 が状態通知。",
+    "  offset 1 = レイヤー、offset 2 = 向き、offset 0/3 は固定 (A3 / 02)。",
+    "match で cmd バイトを必ず指定する: Nape Pro の raw HID は 1 本の 32 バイトレポートに",
+    "複数種のコマンド(0xAB=シリアル応答, 0xA7/0x12/0x14=Launcher 応答)を多重化しているため、",
+    "指定しないと無関係な応答を状態として誤読する。",
+    "",
+    "A3 レポートは `A3 <レイヤー> <向き> <5段設定> 00 …` の並び（すべて実測で確認）。",
+    "  offset 1 = レイヤー。レイヤー切替ボタンで 0x01〜0x08 を巡回。",
+    "  offset 2 = OctaShift の向き。8 方向切替ボタンで",
+    "             0x01 → 0x02 → … → 0x07 → 0x00 →（0x01 に戻る）の順に巡回。",
+    "  offset 3 = DPI 段。DPI 切替ボタンで 0x00〜0x04 の 5 段を巡回。",
+    "",
+    "重要な非対称性: レイヤーごとに向きが記憶されているため、レイヤー切替ボタンを押すと",
+    "offset 1 だけでなく offset 2 まで変化することがある。一方 8 方向切替ボタンは offset 2 のみ、",
+    "DPI 切替ボタンは offset 3 のみを動かす。そのため本ツールは",
+    "「レイヤー → 向き → DPI」の順に変化を見て主役を決める",
+    "（逆順にするとレイヤー表示が角度表示に奪われる）。",
+    "",
+    "map は 0x00 を 0° として巡回順に 45° 刻みで割り当てたもの。",
+    "基準にしたい向きが別なら calibration.angleZeroCode を書き換えるか、",
+    "アプリの校正画面で 0° にする向きを選び直す。",
+    "",
+    "未解決: 過去に `A3 0B 90 02`（offset2 = 0x90 = 144）も観測されている。0〜7 に収まらないため",
+    "cmd=0xA3 には状態通知以外の別種イベントが混ざっていると思われる（本体を持ち上げて動かした",
+    "ときに出たのでバッテリや電源状態の可能性）。map に無い値は HUD に「コード 0xNN（未校正）」と",
+    "出て端末にもレポート全文つきで警告が出る。`nape-hud run --debug` で全文を確認し、",
+    "不要なら match に offset 1 の条件を足して除外する。",
+    "",
+    "notify: onChange … 値が前回と変わったときだけ表示する。",
+    "  各ボタンは必ず自分のバイトを変えるので、どのボタンも押せば必ず表示される。",
+    "  もし「押したのに出ない」ことがあれば \"always\" にすると毎回表示する。"
+  ],
+  "rules": [
+    {
+      "name": "FF60 cmd=0xA3 状態通知（learn で確定）",
+      "usagePage": 65376,
+      "usage": 97,
+      "reportId": 0,
+      "minLength": 4,
+      "match": [{ "offset": 0, "equals": [163] }],
+      "layer": { "offset": 1 },
+      "angle": {
+        "offset": 2,
+        "map": { "0": 0, "1": 45, "2": 90, "3": 135, "4": 180, "5": 225, "6": 270, "7": 315 }
+      },
+      "dpi": {
+        "offset": 3,
+        "//map": [
+          "段（0〜4）→ 実 DPI 値。デバイスは段番号しか返さないので変換表が必要。",
+          "⚠️ 下の値は未確認。公式スペックの「DPI 800〜3200 可変」から標準的な 5 段ラダーを",
+          "   仮置きしたもので、段ごとの実値は公開されていない。",
+          "   Keychron Launcher の DPI 設定で実際の値を確認して必ず書き換えること。",
+          "   段数が 5 以外だった場合も、ここに追記すれば対応できる（未登録の段は端末に警告が出る）。"
+        ],
+        "map": { "0": 800, "1": 1200, "2": 1600, "3": 2400, "4": 3200 }
+      },
+      "notify": "onChange"
+    }
+  ],
+
+  "rulesExamples": [
+    {
+      "name": "見本: calibrate で向きコード → 角度の対応表を入れた形",
+      "usagePage": 65376,
+      "usage": 97,
+      "reportId": 0,
+      "minLength": 4,
+      "match": [{ "offset": 0, "equals": [163] }],
+      "layer": { "offset": 1 },
+      "angle": { "offset": 2, "map": { "0": 0, "1": 45, "2": 90 } }
+    },
+    {
+      "name": "見本: レイヤーがビットマップで来る場合（ZMK/QMK の layer_state）",
+      "usagePage": 65376,
+      "usage": 97,
+      "reportId": 0,
+      "minLength": 6,
+      "match": [{ "offset": 0, "equals": [163] }],
+      "layer": { "offset": 2, "size": 4, "encoding": "bitmaskHighest" }
+    }
+  ],
+
+  "//keyFallback": [
+    "デバイスが状態を通知しない場合の保険。",
+    "Keychron Launcher でレイヤー切替キーに F13〜F20 などのセンチネルキーを併発させ、それをここで拾う。",
+    "BT / 2.4GHz / 有線のどれでも HID キーボードとして届くので接続方式に依存しない。",
+    "keyCode は macOS の仮想キーコード（F13=105, F14=107, F15=113, F16=106, F17=64, F18=79, F19=80, F20=90）。"
+  ],
+  "keyFallback": {
+    "enabled": false,
+    "consume": true,
+    "bindings": [
+      { "keyCode": 105, "layer": 0 },
+      { "keyCode": 107, "layer": 1 },
+      { "keyCode": 113, "layer": 2 },
+      { "keyCode": 106, "layer": 3 },
+      { "keyCode": 64, "angle": 0 },
+      { "keyCode": 79, "angle": 90 },
+      { "keyCode": 80, "angle": 180 },
+      { "keyCode": 90, "angle": 270 }
+    ]
+  },
+
+  "//calibration": [
+    "向きの校正（nape-hud calibrate / アプリの「向きを校正…」）の挙動。",
+    "",
+    "positions … 1 周あたりの方向数。OctaShift は 8。これだけ検出したら校正完了とみなす。",
+    "",
+    "angleZeroCode … 0° の基準にする生コード（0〜7）。これを書いておけば",
+    "  ★ どの向きから校正を始めてもよくなる ★",
+    "  null のときの既定は次の順で決まる:",
+    "    1) 現在の rules[].angle.map で 0° になっているコードを引き継ぐ",
+    "    2) それも無ければ「開始時の向き」を 0° とする",
+    "  （デバイスは押した後の向きを通知するので、1 周ぶん押すと最後に開始時の向きへ戻る）",
+    "",
+    "clockwise … ボタンを押す方向に対して角度を増やすか。",
+    "  実際の回転と逆に感じる場合は false にすると 45° ずつ減る向きで割り当てる。"
+  ],
+  "calibration": {
+    "positions": 8,
+    "angleZeroCode": null,
+    "clockwise": true
+  },
+
+  "//keymap": [
+    "キーアサイン表示（nape-hud keymap / メニューの「キーアサインを表示…」）の設定。",
+    "デバイスは VIA プロトコルに応答するので、キーマップ領域を読み出せる。",
+    "",
+    "⚠️ 読み出せるのは VIA のキーマップ領域だけで、Launcher の表示とは一致しない。",
+    "   Launcher では割り当てが「レイヤー(0〜7) × OctaShift の角度(0°〜315°)」の 2 次元で",
+    "   管理されており、角度別の割り当てはこの領域には入っていない。",
+    "   実機で操作できるのは 6 キーとダイヤル上下（読み出せる 7 列とは対応が取れていない）。",
+    "",
+    "layerCount … 表示するレイヤー数。0 でデバイスの申告値（VIA の 0x11）をそのまま使う。",
+    "  Nape Pro は 0x11 で 9 を返すが、Launcher が見せるのは 0〜7 の 8 レイヤーなので既定は 8。",
+    "",
+    "keysPerLayer … 1 レイヤーあたりのキー数。0 なら自動判定（座標読み 0x04 で検算する）。",
+    "  検算に失敗した旨が表示された場合はここで固定する。"
+  ],
+  "keymap": {
+    "layerCount": 8,
+    "keysPerLayer": 0
+  },
+
+  "//poll": "デバイスが自発通知しない場合、こちらから状態を問い合わせる。request は送るバイト列。",
+  "poll": {
+    "enabled": false,
+    "usagePage": 65376,
+    "usage": 97,
+    "reportId": 0,
+    "request": [1, 0, 0, 0],
+    "intervalMs": 500
+  }
+}
