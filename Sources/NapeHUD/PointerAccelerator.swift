@@ -5,6 +5,17 @@ import AppKit
 /// 小径トラックボールは 1 スワイプで稼げる移動量が小さいので、速く転がしたときだけ
 /// 移動量を増幅する。ファームウェアではなくホスト側で行う。
 ///
+/// ## どうやって移動量を増やすか
+/// **イベントの delta や location を書き換えてもカーソルは動かない。** 実機で確認した:
+///   - セッション層のタップで location を書き換え → 実効 1.07 倍（反映率 16%）
+///   - HID 層のタップで delta を書き換え         → 実効 1.00 倍
+/// macOS はカーソル位置を下層の IOHIDEvent から決めており、CGEvent 側の値は
+/// 「アプリに届く座標」でしかない。書き換えると経路がジグザグになり、
+/// シェイク検出が働いてカーソルが拡大するだけだった。
+///
+/// 効いたのは **元イベントを破棄して、増幅した合成イベントを流し直す**方式（実効 3.01 倍）。
+/// 合成イベントの位置は window server がそのまま採用するため、確実にカーソルが動く。
+///
 /// ## デバイスの判別について
 /// カーソル移動イベントには発生元のデバイスを示す値が無い。
 /// 実機で確認したところ、senderID と言われるフィールド 87 はトラックボールでも
@@ -27,6 +38,15 @@ final class PointerAccelerator {
     /// 整数化で切り捨てた端数。持ち越さないと遅い動きで移動量が失われる。
     private var carryX: Double = 0
     private var carryY: Double = 0
+
+    /// 自分が流し直したイベントの目印。これが無いと自分のイベントを無限に増幅してしまう。
+    static let marker: Int64 = 0x4E415045      // 'NAPE'
+
+    /// --debug のときだけ実効倍率を集計して出す
+    var debug = false
+    private var rawTravel = 0.0
+    private var outTravel = 0.0
+    private var amplified = 0
 
     init(config: AccelerationConfig) {
         self.config = config
@@ -90,6 +110,11 @@ final class PointerAccelerator {
         }
         guard isEnabled else { return Unmanaged.passUnretained(event) }
 
+        // 自分が流し直したものは素通し（無限再帰の防止）
+        guard event.getIntegerValueField(.eventSourceUserData) != Self.marker else {
+            return Unmanaged.passUnretained(event)
+        }
+
         let dx = Double(event.getIntegerValueField(.mouseEventDeltaX))
         let dy = Double(event.getIntegerValueField(.mouseEventDeltaY))
         guard dx != 0 || dy != 0 else { return Unmanaged.passUnretained(event) }
@@ -103,31 +128,52 @@ final class PointerAccelerator {
         let gain = gainFor(dx: dx, dy: dy)
         guard abs(gain - 1.0) > 0.001 else { return Unmanaged.passUnretained(event) }
 
-        // 端数を持ち越して整数化する
-        let wantX = dx * gain + carryX
-        let wantY = dy * gain + carryY
-        var outX = (wantX).rounded(.towardZero)
-        var outY = (wantY).rounded(.towardZero)
-        carryX = wantX - outX
-        carryY = wantY - outY
+        // 追加で動かす量。端数を持ち越さないと遅い動きで移動量が失われる。
+        let wantX = dx * (gain - 1) + carryX
+        let wantY = dy * (gain - 1) + carryY
+        var extraX = wantX.rounded(.towardZero)
+        var extraY = wantY.rounded(.towardZero)
+        carryX = wantX - extraX
+        carryY = wantY - extraY
 
         // 暴れ防止
         let cap = config.maxDeltaPerEvent
         if cap > 0 {
-            outX = min(max(outX, -cap), cap)
-            outY = min(max(outY, -cap), cap)
+            extraX = min(max(extraX, -cap), cap)
+            extraY = min(max(extraY, -cap), cap)
         }
+        guard extraX != 0 || extraY != 0 else { return Unmanaged.passUnretained(event) }
 
-        // 差分だけ書き換えてもカーソルは動かない。位置も入れ替える必要がある。
-        // 元イベントの位置から素の差分を引けば「1 つ前の位置」が得られる。
-        let loc = event.location
-        let prev = CGPoint(x: loc.x - dx, y: loc.y - dy)
-        let moved = CGPoint(x: prev.x + outX, y: prev.y + outY)
+        // 元イベントを捨てて、増幅した合成イベントを流し直す。
+        // （書き換えではカーソルが動かないことを実測で確認済み。冒頭のコメント参照）
+        let here = CGEvent(source: nil)?.location ?? event.location
+        let moved = clampToScreens(CGPoint(x: here.x + extraX, y: here.y + extraY))
 
-        event.location = clampToScreens(moved)
-        event.setIntegerValueField(.mouseEventDeltaX, value: Int64(outX))
-        event.setIntegerValueField(.mouseEventDeltaY, value: Int64(outY))
-        return Unmanaged.passUnretained(event)
+        let button = CGMouseButton(rawValue: UInt32(event.getIntegerValueField(.mouseEventButtonNumber)))
+            ?? .left
+        guard let synth = CGEvent(mouseEventSource: nil, mouseType: type,
+                                  mouseCursorPosition: moved, mouseButton: button) else {
+            return Unmanaged.passUnretained(event)
+        }
+        synth.setIntegerValueField(.mouseEventDeltaX, value: Int64(dx + extraX))
+        synth.setIntegerValueField(.mouseEventDeltaY, value: Int64(dy + extraY))
+        synth.setIntegerValueField(.mouseEventButtonNumber,
+                                   value: event.getIntegerValueField(.mouseEventButtonNumber))
+        synth.flags = event.flags
+        synth.setIntegerValueField(.eventSourceUserData, value: Self.marker)
+        synth.post(tap: .cghidEventTap)
+
+        if debug {
+            rawTravel += abs(dx) + abs(dy)
+            outTravel += abs(dx + extraX) + abs(dy + extraY)
+            amplified += 1
+            if amplified % 200 == 0 {
+                let msg = String(format: "加速: %d 件 / 元 %.0f px → %.0f px（実効 %.2fx）\n",
+                                 amplified, rawTravel, outTravel, outTravel / max(rawTravel, 1))
+                FileHandle.standardError.write(msg.data(using: .utf8)!)
+            }
+        }
+        return nil      // 元イベントは破棄
     }
 
     /// 速度 (px/秒) → 倍率。しきい値未満は素のまま、fullSpeed 以上で maxGain。

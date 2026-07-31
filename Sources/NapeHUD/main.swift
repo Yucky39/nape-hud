@@ -943,6 +943,7 @@ case "run":
 
         if accelerator == nil {
             let a = PointerAccelerator(config: accel)
+            a.debug = debug
             a.isTrackballActive = {
                 let window = Double(accel.trackballActiveWindowMs) / 1000
                 return Date().timeIntervalSince(lastTrackballMotion) < window
