@@ -45,6 +45,9 @@ extension AccelerationConfig {
         onlyTrackball = c.opt(.onlyTrackball, onlyTrackball)
         trackballActiveWindowMs = c.opt(.trackballActiveWindowMs, trackballActiveWindowMs)
         perLayerGain = c.opt(.perLayerGain, perLayerGain)
+        smoothing = c.opt(.smoothing, smoothing)
+        rampPerSecond = c.opt(.rampPerSecond, rampPerSecond)
+        rampDownFactor = c.opt(.rampDownFactor, rampDownFactor)
     }
 }
 

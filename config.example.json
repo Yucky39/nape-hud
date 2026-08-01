@@ -260,6 +260,16 @@
     "baseGain": 1.0,
     "maxGain": 3.0,
     "maxDeltaPerEvent": 240,
+    "//smoothing": "速度の平均化 (0〜1)。小さいほど滑らかだが反応が少し遅れる",
+    "smoothing": 0.12,
+    "//rampPerSecond": [
+      "倍率を 1 秒あたり最大どれだけ上げられるか。",
+      "大きいと動かし始めた瞬間に最高倍率になってカーソルを見失う。",
+      "4.0 なら 1.0 倍から 3.0 倍まで 0.5 秒かけて上がる。"
+    ],
+    "rampPerSecond": 4.0,
+    "//rampDownFactor": "倍率を下げる側の速さの倍率。手を止めたとき素早く等倍へ戻す",
+    "rampDownFactor": 3.0,
     "perLayerGain": {}
   },
 

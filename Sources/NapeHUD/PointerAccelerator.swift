@@ -34,6 +34,8 @@ final class PointerAccelerator {
 
     /// 速度の平滑化値 (px/秒)。1kHz の生の差分は暴れるので指数移動平均で均す。
     private var smoothedSpeed: Double = 0
+    /// 実際に適用している倍率。目標値へ一定の速さで近づける（急に上がると見失う）。
+    private var appliedGain: Double = 1
     private var lastTime: CFAbsoluteTime = 0
     /// 整数化で切り捨てた端数。持ち越さないと遅い動きで移動量が失われる。
     private var carryX: Double = 0
@@ -159,8 +161,15 @@ final class PointerAccelerator {
 
         // 元イベントを捨てて、増幅した合成イベントを流し直す。
         // （書き換えではカーソルが動かないことを実測で確認済み。冒頭のコメント参照）
-        let here = CGEvent(source: nil)?.location ?? event.location
-        let moved = clampToScreens(CGPoint(x: here.x + extraX, y: here.y + extraY))
+        //
+        // 基準は「そのイベント自身の位置」を使う。CGEvent(source:) で現在位置を読むと、
+        // 直前に流した合成イベントがまだ反映されていない古い値を拾うことがあり、
+        // 増幅量が過剰・過少になってカーソルが暴れる。
+        let target = CGPoint(x: event.location.x + extraX, y: event.location.y + extraY)
+        // どの画面にも属さない座標へ送ると system が引き戻して跳ぶので、その場合は増幅しない
+        guard let moved = validPosition(target) else {
+            return Unmanaged.passUnretained(event)
+        }
 
         let button = CGMouseButton(rawValue: UInt32(event.getIntegerValueField(.mouseEventButtonNumber)))
             ?? .left
@@ -224,32 +233,60 @@ final class PointerAccelerator {
         dt = max(dt, 0.001)
 
         let instant = (dx * dx + dy * dy).squareRoot() / dt
-        // 1kHz の生値は暴れるので均す
-        smoothedSpeed += (instant - smoothedSpeed) * 0.35
+        // 1kHz の生値は暴れるので均す。係数が小さいほど滑らか。
+        let k = min(max(config.smoothing, 0.01), 1.0)
+        smoothedSpeed += (instant - smoothedSpeed) * k
 
         // レイヤーごとの上書き（そのレイヤーでの最大倍率として扱う）
         let layerMax = currentLayer().flatMap { config.perLayerGain[String($0)] }
-        return Self.gain(forSpeed: smoothedSpeed, config: config, layerMaxGain: layerMax)
+        let target = Self.gain(forSpeed: smoothedSpeed, config: config, layerMaxGain: layerMax)
+
+        // 目標倍率へ一気に飛ばさず、1 秒あたりの変化量を制限して近づける。
+        // これが無いと「動かし始めた瞬間に最高倍率」になってカーソルを見失う。
+        // 下げる側は速く戻したほうが扱いやすいので係数を掛ける。
+        let up = max(config.rampPerSecond, 0.1)
+        let limit = (target > appliedGain ? up : up * max(config.rampDownFactor, 1)) * dt
+        let diff = target - appliedGain
+        appliedGain += abs(diff) <= limit ? diff : (diff > 0 ? limit : -limit)
+        appliedGain = min(max(appliedGain, min(config.baseGain, 1)), max(config.maxGain, 1))
+        return appliedGain
     }
 
     private func resetSmoothing() {
         smoothedSpeed = 0
+        appliedGain = 1
         carryX = 0
         carryY = 0
         lastTime = 0
     }
 
-    /// 画面の外に飛ばさない
-    private func clampToScreens(_ p: CGPoint) -> CGPoint {
-        guard let first = NSScreen.screens.first else { return p }
-        var union = first.frame
-        for s in NSScreen.screens.dropFirst() { union = union.union(s.frame) }
-        // CGEvent の座標系は上下が反転しているので、高さから引いて合わせる
-        let maxY = NSScreen.screens.map(\.frame.maxY).max() ?? union.maxY
-        let flipped = NSRect(x: union.minX, y: maxY - union.maxY,
-                             width: union.width, height: union.height)
-        return CGPoint(x: min(max(p.x, flipped.minX), flipped.maxX - 1),
-                       y: min(max(p.y, flipped.minY), flipped.maxY - 1))
+    /// 送り先が実在する画面の上かを確かめる。
+    ///
+    /// 画面の外接矩形（union）でクランプする実装だと、大きさの違う画面を並べたときに
+    /// 「union の内側だがどの画面にも属さない」領域が生まれる。実機の 2 画面構成では
+    /// union の 7% がそれに当たり、そこへ送ると system がカーソルを引き戻して跳ねていた。
+    /// そのため矩形で丸めるのではなく、有効かどうかで判定する。
+    private func validPosition(_ p: CGPoint) -> CGPoint? {
+        for r in Self.displayBounds where r.contains(p) { return p }
+        return nil
+    }
+
+    /// 画面構成は頻繁には変わらないので、変更通知で作り直す方式にして毎回の問い合わせを避ける
+    private static var cachedBounds: [CGRect] = []
+    private static var boundsObserver: NSObjectProtocol?
+    static var displayBounds: [CGRect] {
+        if boundsObserver == nil {
+            boundsObserver = NotificationCenter.default.addObserver(
+                forName: NSApplication.didChangeScreenParametersNotification,
+                object: nil, queue: .main) { _ in cachedBounds = [] }
+        }
+        if cachedBounds.isEmpty {
+            var ids = [CGDirectDisplayID](repeating: 0, count: 16)
+            var n: UInt32 = 0
+            CGGetActiveDisplayList(16, &ids, &n)
+            cachedBounds = (0..<Int(n)).map { CGDisplayBounds(ids[$0]) }
+        }
+        return cachedBounds
     }
 }
 

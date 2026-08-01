@@ -312,6 +312,17 @@ struct AccelerationConfig: Codable {
     /// 1 イベントあたりの移動量の上限 (px)。暴れ防止の安全弁
     var maxDeltaPerEvent: Double = 240
 
+    /// 速度の平滑化の強さ (0〜1)。小さいほど滑らかだが反応が遅れる。
+    /// 生の差分は 1kHz で暴れるので、これで均してから倍率を決める。
+    var smoothing: Double = 0.12
+    /// 倍率を 1 秒あたり最大どれだけ上げられるか。
+    /// 大きいと「一気にトップスピード」になって карソルを見失う。
+    /// 例 4.0 なら 1.0 倍から 3.0 倍まで 0.5 秒かけて上がる。
+    var rampPerSecond: Double = 4.0
+    /// 倍率を下げる側は上げる側の何倍の速さで戻すか。
+    /// 手を止めたときに素早く等倍へ戻ったほうが扱いやすい。
+    var rampDownFactor: Double = 3.0
+
     /// Nape Pro を操作しているときだけ加速する。
     /// カーソル移動イベントからは発生元のデバイスが分からないため、
     /// Nape Pro の HID 入力を併せて監視して直前に動きがあったかで判定する。
@@ -326,7 +337,8 @@ struct AccelerationConfig: Codable {
 
     enum CodingKeys: String, CodingKey {
         case enabled, thresholdSpeed, fullSpeed, baseGain, maxGain, maxDeltaPerEvent,
-             onlyTrackball, trackballActiveWindowMs, perLayerGain
+             onlyTrackball, trackballActiveWindowMs, perLayerGain,
+             smoothing, rampPerSecond, rampDownFactor
     }
 }
 

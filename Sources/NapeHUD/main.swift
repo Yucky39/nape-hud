@@ -406,6 +406,36 @@ case "selftest":
         if !ok { failures += 1 }
     }
 
+    // 画面構成の検証。大きさの違う画面を並べると
+    // 「外接矩形の内側だがどの画面にも属さない」領域が生まれ、そこへカーソルを
+    // 送ると system が引き戻して跳ねる。加速はその領域を避ける必要がある。
+    print("")
+    print("── 画面構成の検証 ──")
+    do {
+        let rects = PointerAccelerator.displayBounds
+        var union = CGRect.null
+        rects.forEach { union = union.union($0) }
+        var invalid = 0, total = 0
+        var y = union.minY
+        while y < union.maxY {
+            var x = union.minX
+            while x < union.maxX {
+                total += 1
+                if !rects.contains(where: { $0.contains(CGPoint(x: x, y: y)) }) { invalid += 1 }
+                x += 40
+            }
+            y += 40
+        }
+        print("  画面 \(rects.count) 枚 / 外接矩形 \(Int(union.width))×\(Int(union.height))")
+        let pct = total > 0 ? invalid * 100 / total : 0
+        print("  外接矩形内の無効領域: \(pct)%"
+              + (pct > 0 ? "（矩形で丸めると跳ねるため、有効判定で回避している）" : ""))
+        // 無効領域があっても不具合ではない。回避できていることが重要。
+        let probe = CGPoint(x: union.maxX - 1, y: union.maxY - 1)
+        let inside = rects.contains { $0.contains(probe) }
+        print("  外接矩形の隅が有効か: \(inside ? "有効" : "無効 → 加速はこの点へ送らない")")
+    }
+
     // ポインタ加速のカーブ検証（設定が無効でも計算そのものは確かめる）
     print("")
     print("── ポインタ加速のカーブ検証 ──")
