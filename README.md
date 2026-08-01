@@ -426,5 +426,8 @@ launchctl bootout gui/$(id -u)/com.local.nape-hud
 | `Sources/NapeHUD/KeymapWindow.swift` | キーアサイン表示画面 |
 | `scripts/make-app.sh` | `.app` バンドルの組み立て・署名・配置 |
 | `scripts/make-pkg.sh` | `.pkg` インストーラの作成（設定配置・自動起動つき） |
+
+ビルド済みの pkg は [Releases](https://github.com/Yucky39/nape-hud/releases) に置いてある。
+バイナリは git 履歴に入れず Release のアセットとして配布する（差し替え・削除が容易なため）。
 | `scripts/make-icon.swift` | アプリアイコン（8 方位ダイヤル）の生成 |
 | `Sources/NapeHUD/LenientDecoding.swift` | 設定ファイルの部分指定を許すデコード |

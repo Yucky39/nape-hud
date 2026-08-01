@@ -15,6 +15,9 @@ Keychron Nape Pro の **レイヤー / OctaShift の向き / DPI** を検出し�
 
 ### インストーラ (.pkg) を使う（かんたん）
 
+**ビルド済みの pkg は [Releases](https://github.com/Yucky39/nape-hud/releases) から
+ダウンロードできる。** 自分でビルドする場合:
+
 ```bash
 cd ~/Desktop/nape-hud
 ./scripts/make-pkg.sh
