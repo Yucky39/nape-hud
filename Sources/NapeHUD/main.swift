@@ -434,6 +434,19 @@ case "selftest":
         let probe = CGPoint(x: union.maxX - 1, y: union.maxY - 1)
         let inside = rects.contains { $0.contains(probe) }
         print("  外接矩形の隅が有効か: \(inside ? "有効" : "無効 → 加速はこの点へ送らない")")
+
+        // 画面サイズに応じた倍率調整（有効時の効き方を数値で見せる）
+        var ds = config.acceleration.displayScaling
+        let wasEnabled = ds.enabled
+        ds.enabled = true                 // 無効設定でも「有効ならどうなるか」を出す
+        let a = config.acceleration
+        print("  画面サイズ調整\(wasEnabled ? "（有効）" : "（現在は無効。有効時の値）")"
+              + " 指標=\(ds.metric) 基準=\(ds.referenceSize > 0 ? "\(Int(ds.referenceSize))pt" : "主画面")")
+        for d in PointerAccelerator.displayScaleSummary(config: ds) {
+            let top = a.baseGain + (a.maxGain - a.baseGain) * d.scale
+            print(String(format: "    %@ %@ → 調整 %.2fx / 実効上限 %.2fx",
+                         d.name as NSString, d.size as NSString, d.scale, top))
+        }
     }
 
     // ポインタ加速のカーブ検証（設定が無効でも計算そのものは確かめる）

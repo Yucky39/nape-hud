@@ -43,6 +43,9 @@ final class SettingsController: NSObject, NSWindowDelegate {
     private let rampLabel = NSTextField(labelWithString: "")
     private let smoothLabel = NSTextField(labelWithString: "")
     private let curveView = CurveView()
+    private let displayScaleCheck = NSButton(checkboxWithTitle: "画面の大きさに合わせて倍率を自動調整",
+                                             target: nil, action: nil)
+    private let displayScaleNote = NSTextField(labelWithString: "")
     private let accelNote = NSTextField(labelWithString: "")
     private let accelStatus = NSTextField(labelWithString: "")
     private var permissionButton: NSButton!
@@ -70,13 +73,13 @@ final class SettingsController: NSObject, NSWindowDelegate {
     // MARK: - 組み立て
 
     private func buildWindow() {
-        let w = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 560, height: 600),
+        let w = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 560, height: 660),
                          styleMask: [.titled, .closable, .resizable],
                          backing: .buffered, defer: false)
         w.title = "nape-hud 設定"
         w.delegate = self
         w.isReleasedWhenClosed = false
-        w.minSize = NSSize(width: 560, height: 520)
+        w.minSize = NSSize(width: 560, height: 560)
 
         let tabs = NSTabView()
         tabs.translatesAutoresizingMaskIntoConstraints = false
@@ -248,6 +251,14 @@ final class SettingsController: NSObject, NSWindowDelegate {
         curveView.widthAnchor.constraint(equalToConstant: 480).isActive = true
         curveView.heightAnchor.constraint(equalToConstant: 110).isActive = true
 
+        displayScaleCheck.target = self
+        displayScaleCheck.action = #selector(accelChanged)
+        displayScaleNote.font = .systemFont(ofSize: 10)
+        displayScaleNote.textColor = .secondaryLabelColor
+        displayScaleNote.maximumNumberOfLines = 0
+        displayScaleNote.lineBreakMode = .byWordWrapping
+        displayScaleNote.preferredMaxLayoutWidth = 480
+
         accelNote.font = .systemFont(ofSize: 11)
         accelNote.textColor = .secondaryLabelColor
 
@@ -268,6 +279,8 @@ final class SettingsController: NSObject, NSWindowDelegate {
             row("最大倍率", [maxGainSlider, maxGainLabel]),
             row("立ち上がりの速さ", [rampSlider, rampLabel]),
             row("なめらかさ", [smoothSlider, smoothLabel]),
+            displayScaleCheck,
+            displayScaleNote,
             note("「立ち上がりの速さ」は倍率が上がる速度。遅くすると急に加速せず、カーソルを見失いにくい。"
                  + "「なめらかさ」は速度の平均化。左に寄せるほど滑らかだが反応が少し遅れる。"),
             curveView,
@@ -319,6 +332,7 @@ final class SettingsController: NSObject, NSWindowDelegate {
         fullSpeedSlider.doubleValue = a.fullSpeed
         maxGainSlider.doubleValue = a.maxGain
         rampSlider.doubleValue = a.rampPerSecond
+        displayScaleCheck.state = a.displayScaling.enabled ? .on : .off
         // 値が小さいほど滑らかなので、スライダーは左右を反転して直感に合わせる
         smoothSlider.doubleValue = 0.52 - a.smoothing
         syncAccelLabels()
@@ -347,6 +361,7 @@ final class SettingsController: NSObject, NSWindowDelegate {
         a.maxGain = (maxGainSlider.doubleValue * 10).rounded() / 10
         a.rampPerSecond = (rampSlider.doubleValue * 10).rounded() / 10
         a.smoothing = ((0.52 - smoothSlider.doubleValue) * 100).rounded() / 100
+        a.displayScaling.enabled = displayScaleCheck.state == .on
         return a
     }
 
@@ -358,6 +373,16 @@ final class SettingsController: NSObject, NSWindowDelegate {
         // 上限に達するまでの時間で見せる（毎秒何倍かより直感的）
         let rise = (a.maxGain - a.baseGain) / max(a.rampPerSecond, 0.1)
         rampLabel.stringValue = String(format: "%.2f 秒で上限", rise)
+        // 各画面の調整結果を出す（無効時も「有効ならどうなるか」が分かるように）
+        var probe = a.displayScaling
+        probe.enabled = true
+        let lines = PointerAccelerator.displayScaleSummary(config: probe).map { d in
+            String(format: "%@（%@）→ 上限 %.2f 倍", d.name, d.size,
+                   a.baseGain + (a.maxGain - a.baseGain) * d.scale)
+        }
+        displayScaleNote.stringValue = (a.displayScaling.enabled ? "" : "（無効時。有効にすると）")
+            + lines.joined(separator: "\n")
+
         smoothLabel.stringValue = a.smoothing <= 0.08 ? "とても滑らか"
             : (a.smoothing <= 0.18 ? "滑らか" : (a.smoothing <= 0.3 ? "標準" : "機敏"))
         curveView.config = a

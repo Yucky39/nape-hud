@@ -48,6 +48,19 @@ extension AccelerationConfig {
         smoothing = c.opt(.smoothing, smoothing)
         rampPerSecond = c.opt(.rampPerSecond, rampPerSecond)
         rampDownFactor = c.opt(.rampDownFactor, rampDownFactor)
+        displayScaling = c.opt(.displayScaling, DisplayScalingConfig())
+    }
+}
+
+extension DisplayScalingConfig {
+    init(from decoder: Swift.Decoder) throws {
+        self.init()
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        enabled = c.opt(.enabled, enabled)
+        metric = c.opt(.metric, metric)
+        referenceSize = c.opt(.referenceSize, referenceSize)
+        minScale = c.opt(.minScale, minScale)
+        maxScale = c.opt(.maxScale, maxScale)
     }
 }
 

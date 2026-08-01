@@ -335,10 +335,40 @@ struct AccelerationConfig: Codable {
     /// 例 {"2": 1.0} でレイヤー 2 だけ加速を切る
     var perLayerGain: [String: Double] = [:]
 
+    /// 画面の大きさに応じて倍率を自動調整する（任意機能・既定は無効）
+    var displayScaling: DisplayScalingConfig = .init()
+
     enum CodingKeys: String, CodingKey {
         case enabled, thresholdSpeed, fullSpeed, baseGain, maxGain, maxDeltaPerEvent,
              onlyTrackball, trackballActiveWindowMs, perLayerGain,
-             smoothing, rampPerSecond, rampDownFactor
+             smoothing, rampPerSecond, rampDownFactor, displayScaling
+    }
+}
+
+/// 画面の大きさに応じて倍率を自動調整する設定。
+///
+/// カーソルは論理座標（ポイント）で動くので、画面を横断するのに必要な移動量は
+/// 論理サイズに比例する。実機の 2 画面では
+///   外部ウルトラワイド … 2560×1080 pt（対角比 1.26）
+///   内蔵 Retina    … 1280×832 pt（対角比 0.69。実 2560px だが論理は半分）
+/// と 2 倍近い差があり、同じ倍率だと片方で足りず片方で行き過ぎる。
+///
+/// 物理サイズや PPI ではなく論理サイズを使うのが正しい。Retina でも
+/// カーソルの移動量はポイント基準で決まるため。
+struct DisplayScalingConfig: Codable {
+    var enabled: Bool = false
+    /// diagonal … 対角の長さで比べる（縦横のバランスが取れる。既定）
+    /// width    … 横幅で比べる（横移動を重視。ウルトラワイドで強く効く）
+    var metric: String = "diagonal"
+    /// 基準にする大きさ（ポイント）。0 なら主画面を基準にする。
+    /// 0 のままなら「設定した最大倍率は主画面での値」という意味になる。
+    var referenceSize: Double = 0
+    /// 倍率の調整幅の下限・上限（行き過ぎ防止）
+    var minScale: Double = 0.5
+    var maxScale: Double = 2.5
+
+    enum CodingKeys: String, CodingKey {
+        case enabled, metric, referenceSize, minScale, maxScale
     }
 }
 

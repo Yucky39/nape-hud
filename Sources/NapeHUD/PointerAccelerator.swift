@@ -36,6 +36,8 @@ final class PointerAccelerator {
     private var smoothedSpeed: Double = 0
     /// 実際に適用している倍率。目標値へ一定の速さで近づける（急に上がると見失う）。
     private var appliedGain: Double = 1
+    /// 直近に適用した画面調整係数（--debug 表示用）
+    private var lastDisplayScale: Double = 1
     private var lastTime: CFAbsoluteTime = 0
     /// 整数化で切り捨てた端数。持ち越さないと遅い動きで移動量が失われる。
     private var carryX: Double = 0
@@ -131,7 +133,7 @@ final class PointerAccelerator {
             return Unmanaged.passUnretained(event)
         }
 
-        let gain = gainFor(dx: dx, dy: dy)
+        let gain = gainFor(dx: dx, dy: dy, at: event.location)
         if debug {
             seen += 1
             rawTravel += abs(dx) + abs(dy)
@@ -207,7 +209,12 @@ final class PointerAccelerator {
                         overall, avgWhenAmplified, config.maxGain)
         let l3 = String(format: "     到達した最高速度 %.0f px/s（上限に達するのは %.0f px/s 以上）\n",
                         peakSpeed, config.fullSpeed)
-        FileHandle.standardError.write((l1 + l2 + l3).data(using: .utf8)!)
+        let l4 = config.displayScaling.enabled
+            ? String(format: "     画面調整 %.2fx（実効上限 %.2fx）\n",
+                     lastDisplayScale,
+                     config.baseGain + (config.maxGain - config.baseGain) * lastDisplayScale)
+            : ""
+        FileHandle.standardError.write((l1 + l2 + l3 + l4).data(using: .utf8)!)
     }
 
     /// 速度 (px/秒) → 倍率。しきい値未満は素のまま、fullSpeed 以上で maxGain。
@@ -224,7 +231,7 @@ final class PointerAccelerator {
         return c.baseGain + (top - c.baseGain) * s
     }
 
-    private func gainFor(dx: Double, dy: Double) -> Double {
+    private func gainFor(dx: Double, dy: Double, at point: CGPoint) -> Double {
         let now = CFAbsoluteTimeGetCurrent()
         var dt = now - lastTime
         lastTime = now
@@ -239,7 +246,12 @@ final class PointerAccelerator {
 
         // レイヤーごとの上書き（そのレイヤーでの最大倍率として扱う）
         let layerMax = currentLayer().flatMap { config.perLayerGain[String($0)] }
-        let target = Self.gain(forSpeed: smoothedSpeed, config: config, layerMaxGain: layerMax)
+        // 画面の大きさに応じて上限を調整する（有効時のみ）
+        let scale = Self.displayScale(at: point, config: config.displayScaling)
+        lastDisplayScale = scale
+        let top = (layerMax ?? config.maxGain)
+        let scaledTop = config.baseGain + (top - config.baseGain) * scale
+        let target = Self.gain(forSpeed: smoothedSpeed, config: config, layerMaxGain: scaledTop)
 
         // 目標倍率へ一気に飛ばさず、1 秒あたりの変化量を制限して近づける。
         // これが無いと「動かし始めた瞬間に最高倍率」になってカーソルを見失う。
@@ -248,7 +260,9 @@ final class PointerAccelerator {
         let limit = (target > appliedGain ? up : up * max(config.rampDownFactor, 1)) * dt
         let diff = target - appliedGain
         appliedGain += abs(diff) <= limit ? diff : (diff > 0 ? limit : -limit)
-        appliedGain = min(max(appliedGain, min(config.baseGain, 1)), max(config.maxGain, 1))
+        let ceiling = max(config.baseGain + (config.maxGain - config.baseGain)
+                          * max(config.displayScaling.maxScale, 1), 1)
+        appliedGain = min(max(appliedGain, min(config.baseGain, 1)), ceiling)
         return appliedGain
     }
 
@@ -258,6 +272,51 @@ final class PointerAccelerator {
         carryX = 0
         carryY = 0
         lastTime = 0
+    }
+
+
+    // MARK: - 画面サイズに応じた調整
+
+    /// 画面の論理サイズから求めた倍率の調整係数。
+    ///
+    /// カーソルは論理座標（ポイント）で動くので、画面を横断するのに必要な移動量は
+    /// 論理サイズに比例する。実機の 2 画面では対角比が 1.26 と 0.69 で 2 倍近く違い、
+    /// 同じ倍率だと片方で足りず片方で行き過ぎる。
+    /// 物理サイズや PPI ではなく論理サイズを使うのが正しい（Retina でも
+    /// カーソルの移動量はポイント基準で決まるため）。
+    static func displayScale(at point: CGPoint, config c: DisplayScalingConfig) -> Double {
+        guard c.enabled else { return 1 }
+        guard let target = displayBounds.first(where: { $0.contains(point) }) ?? displayBounds.first
+        else { return 1 }
+
+        func size(_ r: CGRect) -> Double {
+            c.metric.lowercased() == "width"
+                ? r.width
+                : (r.width * r.width + r.height * r.height).squareRoot()
+        }
+        // 基準サイズ。0 なら主画面（= 設定値は主画面での倍率という意味になる）
+        let reference: Double
+        if c.referenceSize > 0 {
+            reference = c.referenceSize
+        } else if let main = displayBounds.first(where: { $0.origin == .zero }) {
+            reference = size(main)
+        } else {
+            reference = size(target)
+        }
+        guard reference > 0 else { return 1 }
+        let raw = size(target) / reference
+        return min(max(raw, min(c.minScale, 1)), max(c.maxScale, 1))
+    }
+
+    /// 検証・表示用。各画面の名前と調整係数を返す。
+    static func displayScaleSummary(config c: DisplayScalingConfig) -> [(name: String, size: String, scale: Double)] {
+        displayBounds.map { r in
+            let name = NSScreen.screens.first { s in
+                s.frame.width == r.width && s.frame.height == r.height
+            }?.localizedName ?? "画面"
+            return (name, "\(Int(r.width))×\(Int(r.height)) pt",
+                    displayScale(at: CGPoint(x: r.midX, y: r.midY), config: c))
+        }
     }
 
     /// 送り先が実在する画面の上かを確かめる。
