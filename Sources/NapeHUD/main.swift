@@ -85,11 +85,15 @@ func displayLayer(_ raw: Int) -> Int { raw + config.hud.layerNumberOffset }
 /// 表示用のレイヤー名。layerNames のキーは補正後の番号で引く。
 func layerName(_ raw: Int) -> String { layerNameByNumber(displayLayer(raw)) }
 
+/// 設定画面での編集を再起動なしで効かせるための差し替え先。
+/// 名前は表示にしか使わないので、その場で反映して構わない。
+var layerNameOverride: [String: String]?
+
 /// すでに表示用の番号になっているものの名前。
 /// キーアサイン表示は VIA のレイヤー番号（Launcher と同じ 0 起点）を使うので、
 /// 二重に補正しないようこちらを使う。
 func layerNameByNumber(_ n: Int) -> String {
-    config.layerNames[String(n)] ?? "Layer \(n)"
+    (layerNameOverride ?? config.layerNames)[String(n)] ?? "Layer \(n)"
 }
 func angleName(_ deg: Int) -> String {
     config.angleNames[String(deg)] ?? "\(deg)°"
@@ -1031,6 +1035,14 @@ case "run":
         let w = SettingsController(config: config, configURL: configPath ?? Config.defaultPath)
         // 生成・破棄まで含めて適用する（起動時と同じ経路）
         w.onAccelerationChanged = { newAccel in applyAcceleration(newAccel, announce: false) }
+        w.onLayerNamesChanged = { names in
+            layerNameOverride = names
+            refreshStatus()
+            // 直前の表示にも新しい名前を反映して出し直す
+            if let l = decoder.state.layer {
+                present(.layerPrimary(l), connection: mon.activeConnection)
+            }
+        }
         w.onOpenConfigFile = { status?.onOpenConfig?() }
         w.onRequestRestart = { status?.onRelaunch?() }
         w.onClose = { settingsWindow = nil }

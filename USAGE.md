@@ -205,12 +205,18 @@ echo 'alias nape-hud="/Applications/NapeHUD.app/Contents/MacOS/NapeHUD"' >> ~/.z
 （Launcher は同じレイヤーを 0〜7 と表示する。揃えたい場合は
 `hud.layerNumberOffset` を `-1` にして、下のキーも 0〜7 に書き換える）。
 
+**設定画面 →「レイヤー名」タブ**から編集できる。日本語も使える。
+**入力して Enter を押すとすぐ反映される**（保存すれば次回起動時も有効）。
+空欄にすると `Layer N` に戻る。
+
+設定ファイルで書く場合:
+
 ```json
 "layerNames": {
-  "1": "Base",
-  "2": "Scroll",
-  "3": "Media",
-  "4": "Edit"
+  "1": "ブラウズ",
+  "2": "コピペ用",
+  "3": "動画編集",
+  "4": "Figma"
 }
 ```
 

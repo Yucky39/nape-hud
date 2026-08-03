@@ -43,19 +43,16 @@
   },
 
   "//layerNames": [
-    "レイヤー番号 → 表示名。キーは hud.layerNumberOffset を適用した後の番号。",
+    "レイヤー番号 → 表示名。自由に付けられる（日本語可）。設定画面の「レイヤー名」タブからでも編集でき、",
+    "そちらは入力して Enter を押すと再起動なしで反映される。書かなければ「Layer N」と表示される。",
+    "キーは hud.layerNumberOffset を適用した後の番号。",
     "レイヤーは全 8 段。状態通知は 1〜8、Launcher の表示は 0〜7（同じものの呼び方の違い）。",
     "layerNumberOffset を -1 にした場合はキーを 0〜7 に書き換えること。"
   ],
-  "layerNames": {
-    "1": "Layer 1",
-    "2": "Layer 2",
-    "3": "Layer 3",
-    "4": "Layer 4",
-    "5": "Layer 5",
-    "6": "Layer 6",
-    "7": "Layer 7",
-    "8": "Layer 8"
+  "layerNames": {},
+
+  "//layerNamesExample": {
+    "1": "ブラウズ", "2": "コピペ用", "3": "動画編集", "4": "Figma"
   },
 
   "//dpiNames": [

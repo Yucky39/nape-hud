@@ -15,6 +15,8 @@ final class SettingsController: NSObject, NSWindowDelegate {
     /// 加速の値を触ったら即座に反映する（効き具合は動かして確かめるものなので）。
     /// 戻り値の状態をそのまま画面に出す。生成に失敗した理由が分からないと直せないため。
     var onAccelerationChanged: ((AccelerationConfig) -> AccelerationStatus)?
+    /// レイヤー名の編集を即座に反映する（表示にしか使わないので再起動を待たせない）
+    var onLayerNamesChanged: (([String: String]) -> Void)?
     var onOpenConfigFile: (() -> Void)?
     var onRequestRestart: (() -> Void)?
     var onClose: (() -> Void)?
@@ -293,18 +295,37 @@ final class SettingsController: NSObject, NSWindowDelegate {
     // MARK: - レイヤー名タブ
 
     private func layerNamePane() -> NSView {
-        var rows: [NSView] = [note("ポップアップに出すレイヤーの呼び名。空欄なら「Layer N」と表示する。")]
+        var rows: [NSView] = [note("ポップアップに出すレイヤーの呼び名。日本語も使える。入力して Enter を押すとすぐ反映される（保存すると次回起動時も有効）。空欄にすると「Layer N」に戻る。")]
         let offset = config.hud.layerNumberOffset
         let numbers = offset == -1 ? Array(0...7) : Array(1...8)
         for n in numbers {
             let f = NSTextField(string: "")
-            f.placeholderString = "Layer \(n)"
+            f.placeholderString = "Layer \(n)（空欄ならこの表記）"
             f.widthAnchor.constraint(equalToConstant: 260).isActive = true
+            f.target = self
+            f.action = #selector(layerNameEdited)
             layerNameFields[n] = f
             rows.append(row("レイヤー \(n)", [f]))
         }
         return pane(rows)
     }
+
+    /// 入力欄を確定したら即座に反映する
+    @objc private func layerNameEdited() {
+        onLayerNamesChanged?(currentLayerNames())
+        statusLabel.stringValue = "レイヤー名を反映しました（保存すると次回起動時も有効）"
+    }
+
+    private func currentLayerNames() -> [String: String] {
+        var names = layerNameOverrideBase
+        for (n, f) in layerNameFields {
+            let v = f.stringValue.trimmingCharacters(in: .whitespaces)
+            if v.isEmpty { names.removeValue(forKey: String(n)) } else { names[String(n)] = v }
+        }
+        return names
+    }
+    /// 画面に出していない番号の名前を消さないよう、元の内容を土台にする
+    private var layerNameOverrideBase: [String: String] { config.layerNames }
 
     // MARK: - 読み込み / 反映
 
@@ -449,11 +470,7 @@ final class SettingsController: NSObject, NSWindowDelegate {
         ]
 
         // レイヤー名はまとめて 1 つのオブジェクトとして書き換える
-        var names: [String: String] = config.layerNames
-        for (n, f) in layerNameFields {
-            let v = f.stringValue.trimmingCharacters(in: .whitespaces)
-            if v.isEmpty { names.removeValue(forKey: String(n)) } else { names[String(n)] = v }
-        }
+        let names = currentLayerNames()
         let namesJSON = "{ " + names.keys.sorted { (Int($0) ?? 0) < (Int($1) ?? 0) }
             .map { "\"\($0)\": \(quoted(names[$0]!))" }
             .joined(separator: ", ") + " }"
