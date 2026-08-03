@@ -17,7 +17,7 @@ ROOT="$PWD"
 
 APP_NAME="NapeHUD"
 BUNDLE_ID="com.local.nape-hud"
-VERSION="1.0.1"
+VERSION="1.0.2"
 BUILD_DIR="$ROOT/build"
 APP="$BUILD_DIR/$APP_NAME.app"
 # 署名 ID を決める。
