@@ -134,24 +134,81 @@ case "help":
     usage()
 
 case "devices":
-    let mon = HIDMonitor(match: config.device, allUsagePages: true)
-    mon.onLog = { print($0) }
-    do { try mon.start() } catch {
-        FileHandle.standardError.write("\(error.localizedDescription)\n".data(using: .utf8)!); exit(1)
-    }
-    // マッチングコールバックを 1 巡させる
-    CFRunLoopRunInMode(.defaultMode, 0.6, false)
-    let list = mon.interfaceSummary
+    // 接続方式（BT / 2.4GHz / 有線）でデバイスの見え方が変わるため、
+    // 一致したものだけでなく **すべての HID デバイス** を出し、
+    // 一致しない場合はその理由まで示す。原因がここで判断できるようにする。
+    print("nape-hud devices — HID デバイスの一覧と照合結果")
     print("")
-    if list.isEmpty {
-        print("Nape Pro が見つかりません（VID 0x\(String(format: "%04X", config.device.vendorId))）。")
-        print("接続を確認するか、config.json の device.productIds / productNameContains を調整してください。")
-        exit(1)
-    }
-    print("検出インターフェース:")
-    list.forEach { print("  \($0)") }
+    print("設定の照合条件:")
+    print("  vendorId            : 0x\(String(format: "%04X", config.device.vendorId))")
+    print("  productIds          : \(config.device.productIds.map { String(format: "0x%04X", $0) }.joined(separator: ", "))")
+    print("  productNameContains : \(config.device.productNameContains.joined(separator: ", "))")
+    let pagesCfg = config.device.usagePages
+    print("  usagePages（監視面）: \(pagesCfg.isEmpty ? "全面" : pagesCfg.map { String(format: "0x%04X", $0) }.joined(separator: ", "))")
     print("")
-    print("アクティブな接続: \(mon.activeConnection.rawValue)")
+
+    let all = HIDMonitor.enumerateAll()
+    guard !all.isEmpty else { print("HID デバイスを列挙できませんでした。"); exit(1) }
+
+    // 同一デバイスの複数インターフェースをまとめて見せる
+    let grouped = Dictionary(grouping: all) { "\($0.vendorId)-\($0.productId)-\($0.product)" }
+    var matchedAny = false
+    var vendorPageSeen = false
+
+    for key in grouped.keys.sorted() {
+        let ifaces = grouped[key]!.sorted { $0.usagePage < $1.usagePage }
+        guard let first = ifaces.first else { continue }
+        let matches = config.device.matches(vid: first.vendorId, pid: first.productId,
+                                            product: first.product)
+        // Keychron 以外で一致もしないものは出しても混乱するだけなので、
+        // VID が一致するものか、名前に候補語を含むものだけ詳しく出す
+        let interesting = first.vendorId == config.device.vendorId
+            || config.device.productNameContains.contains {
+                   !$0.isEmpty && first.product.localizedCaseInsensitiveContains($0) }
+        guard interesting || matches else { continue }
+
+        print("\(matches ? "✅ 一致" : "❌ 不一致")  \(first.product.isEmpty ? "(名称なし)" : first.product)")
+        print("   VID/PID   : \(String(format: "0x%04X / 0x%04X", first.vendorId, first.productId))")
+        print("   接続       : \(first.transport)")
+        print("   インターフェース:")
+        for i in ifaces {
+            let watched = pagesCfg.isEmpty || pagesCfg.contains(i.usagePage)
+            let note = i.usagePage == 0xFF60 ? "  ← 状態通知が来る面" : ""
+            print(String(format: "     0x%04X/0x%02X  %@%@",
+                         i.usagePage, i.usage,
+                         (watched ? "監視対象" : "監視対象外") as NSString, note as NSString))
+            if i.usagePage == 0xFF60 { vendorPageSeen = true }
+        }
+        if matches { matchedAny = true } else {
+            // 一致しない理由を明示する
+            var why: [String] = []
+            if first.vendorId != config.device.vendorId { why.append("vendorId が違う") }
+            if !config.device.productIds.contains(first.productId) {
+                why.append("productIds に 0x\(String(format: "%04X", first.productId)) が無い")
+            }
+            if !config.device.productNameContains.contains(where: {
+                !$0.isEmpty && first.product.localizedCaseInsensitiveContains($0) }) {
+                why.append("productNameContains に一致する語が無い")
+            }
+            print("   不一致の理由: \(why.joined(separator: " / "))")
+            print("   → 対処: config.json の device.productIds に 0x\(String(format: "%04X", first.productId)) を追加")
+        }
+        print("")
+    }
+
+    print("── 判定 ──")
+    if !matchedAny {
+        print("❌ 照合条件に一致するデバイスがありません。")
+        print("   上記の「不一致の理由」と対処を確認してください。")
+    } else if !vendorPageSeen {
+        print("❌ 一致するデバイスはありますが、状態通知が来る 0xFF60 の面がありません。")
+        print("   この接続方式ではベンダ面が出ていないため、レイヤー等を検出できません。")
+        print("   → 対処: keyFallback（センチネルキー方式）を使うか、有線/2.4GHz を使う。")
+    } else if !(pagesCfg.isEmpty || pagesCfg.contains(0xFF60)) {
+        print("❌ 0xFF60 の面はありますが、device.usagePages に含まれていないため監視していません。")
+    } else {
+        print("✅ 検出できる構成です（0xFF60 を監視対象として捕捉できています）。")
+    }
 
 case "doctor":
     print("nape-hud 健診")

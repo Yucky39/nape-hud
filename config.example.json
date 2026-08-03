@@ -3,10 +3,11 @@
 
   "device": {
     "vendorId": 13364,
-    "productIds": [1088],
-    "productNameContains": ["Nape"],
+    "//productIds": "1088=0x0440 Nape Pro 本体 / 53286=0xD026 2.4GHz ドングル(Keychron Link-KM)",
+    "productIds": [1088, 53286],
+    "productNameContains": ["Nape", "Link-KM"],
     "//connectionNames": "2.4GHz ドングルや BT で PID が変わる場合はここで接続種別を明示する",
-    "connectionNames": {},
+    "connectionNames": { "0xD026": "2.4GHz" },
 
     "//usagePages": [
       "監視する HID インターフェース（PrimaryUsagePage）。",

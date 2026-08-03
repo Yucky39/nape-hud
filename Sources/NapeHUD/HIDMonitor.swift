@@ -259,3 +259,34 @@ func inputMonitoringGranted() -> Bool {
 func requestInputMonitoring() -> Bool {
     IOHIDRequestAccess(kIOHIDRequestTypeListenEvent)
 }
+
+// MARK: - 列挙（診断用）
+
+extension HIDMonitor {
+    struct DeviceInfo {
+        var vendorId: Int
+        var productId: Int
+        var product: String
+        var transport: String
+        var usagePage: Int
+        var usage: Int
+    }
+
+    /// すべての HID デバイスを列挙する。
+    /// 接続方式によってデバイスの見え方（PID・名称・インターフェース構成）が変わるため、
+    /// 照合に失敗したときの原因究明にはフィルタ前の一覧が必要になる。
+    static func enumerateAll() -> [DeviceInfo] {
+        let mgr = IOHIDManagerCreate(kCFAllocatorDefault, IOOptionBits(kIOHIDOptionsTypeNone))
+        IOHIDManagerSetDeviceMatching(mgr, nil)
+        // 開かずに列挙するので権限は不要
+        guard let set = IOHIDManagerCopyDevices(mgr) as? Set<IOHIDDevice> else { return [] }
+        return set.map { d in
+            DeviceInfo(vendorId: intProp(d, kIOHIDVendorIDKey) ?? 0,
+                       productId: intProp(d, kIOHIDProductIDKey) ?? 0,
+                       product: strProp(d, kIOHIDProductKey) ?? "",
+                       transport: strProp(d, kIOHIDTransportKey) ?? "?",
+                       usagePage: intProp(d, kIOHIDPrimaryUsagePageKey) ?? 0,
+                       usage: intProp(d, kIOHIDPrimaryUsageKey) ?? 0)
+        }
+    }
+}
