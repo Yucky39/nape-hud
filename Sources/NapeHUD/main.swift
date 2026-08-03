@@ -153,7 +153,10 @@ case "devices":
     // 同一デバイスの複数インターフェースをまとめて見せる
     let grouped = Dictionary(grouping: all) { "\($0.vendorId)-\($0.productId)-\($0.product)" }
     var matchedAny = false
-    var vendorPageSeen = false
+    // 判定はデバイス単位で行う。別デバイス（同じ Keychron のドングルやキーボード）に
+    // 0xFF60 があるのを見て「検出できる」と誤判定してはいけない。
+    var capable: [String] = []      // 状態通知を受け取れるデバイス
+    var incapable: [(String, String)] = []   // 受け取れないデバイス（名前, 接続）
 
     for key in grouped.keys.sorted() {
         let ifaces = grouped[key]!.sorted { $0.usagePage < $1.usagePage }
@@ -177,9 +180,15 @@ case "devices":
             print(String(format: "     0x%04X/0x%02X  %@%@",
                          i.usagePage, i.usage,
                          (watched ? "監視対象" : "監視対象外") as NSString, note as NSString))
-            if i.usagePage == 0xFF60 { vendorPageSeen = true }
         }
-        if matches { matchedAny = true } else {
+        if matches {
+            matchedAny = true
+            let hasVendor = ifaces.contains {
+                $0.usagePage == 0xFF60 && (pagesCfg.isEmpty || pagesCfg.contains($0.usagePage))
+            }
+            if hasVendor { capable.append("\(first.product) [\(first.transport)]") }
+            else { incapable.append((first.product, first.transport)) }
+        } else {
             // 一致しない理由を明示する
             var why: [String] = []
             if first.vendorId != config.device.vendorId { why.append("vendorId が違う") }
@@ -200,14 +209,21 @@ case "devices":
     if !matchedAny {
         print("❌ 照合条件に一致するデバイスがありません。")
         print("   上記の「不一致の理由」と対処を確認してください。")
-    } else if !vendorPageSeen {
-        print("❌ 一致するデバイスはありますが、状態通知が来る 0xFF60 の面がありません。")
-        print("   この接続方式ではベンダ面が出ていないため、レイヤー等を検出できません。")
-        print("   → 対処: keyFallback（センチネルキー方式）を使うか、有線/2.4GHz を使う。")
-    } else if !(pagesCfg.isEmpty || pagesCfg.contains(0xFF60)) {
-        print("❌ 0xFF60 の面はありますが、device.usagePages に含まれていないため監視していません。")
     } else {
-        print("✅ 検出できる構成です（0xFF60 を監視対象として捕捉できています）。")
+        if !capable.isEmpty {
+            print("✅ 状態通知を受け取れる経路:")
+            capable.forEach { print("     \($0)") }
+        }
+        if !incapable.isEmpty {
+            print("❌ 状態通知を受け取れない経路（0xFF60 の面が無い）:")
+            incapable.forEach { print("     \($0.0) [\($0.1)]") }
+            print("   この経路で操作している間は HUD が出ません。")
+            print("   → 対処: 有線 / 2.4GHz ドングルを使う、または keyFallback（センチネルキー方式）")
+        }
+        if capable.isEmpty {
+            print("")
+            print("   いま使っている経路では検出できません。")
+        }
     }
 
 case "doctor":
@@ -940,6 +956,35 @@ case "run":
             NSApp.terminate(nil)
         }
     }
+
+    // 一致するデバイスが 0xFF60（状態通知の面）を持たない接続方式だと、
+    // 監視は成功するのにイベントが一切来ない = 何も起きない状態になる。
+    // 黙って動かないのが一番困るので、起動時に気づけるようにする。
+    // enumerateAll はデバイスを開かないので追加の許可は不要。
+    func warnIfConnectionCannotReport() {
+        let all = HIDMonitor.enumerateAll().filter {
+            config.device.matches(vid: $0.vendorId, pid: $0.productId, product: $0.product)
+        }
+        guard !all.isEmpty else { return }
+        let pages = config.device.usagePages
+        let byDevice = Dictionary(grouping: all) { "\($0.productId)-\($0.product)-\($0.transport)" }
+        let blind = byDevice.values.filter { ifaces in
+            !ifaces.contains { $0.usagePage == 0xFF60 && (pages.isEmpty || pages.contains($0.usagePage)) }
+        }
+        let capableCount = byDevice.values.count - blind.count
+        guard let first = blind.first?.first else { return }
+
+        let name = "\(first.product) [\(first.transport)]"
+        let hint = capableCount > 0
+            ? "有線 / 2.4GHz ドングル経由なら検出できます。"
+            : "有線 / 2.4GHz ドングルを使うか、keyFallback を有効にしてください。"
+        let msg = "⚠️  \(name) は状態通知の面（0xFF60）を持たないため、この経路では検出できません。\n"
+            + "    \(hint)\n"
+            + "    詳細は `nape-hud devices` で確認できます。\n\n"
+        FileHandle.standardError.write(msg.data(using: .utf8)!)
+        status?.showWarning("\(first.transport) では検出できません")
+    }
+    warnIfConnectionCannotReport()
 
     do {
         try mon.start()
