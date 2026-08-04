@@ -10,3 +10,8 @@ build/
 
 # macOS
 .DS_Store
+
+# .NET (windows/)
+bin/
+obj/
+windows/dist/

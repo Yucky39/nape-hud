@@ -1,0 +1,32 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <AssemblyName>nape-hud</AssemblyName>
+    <RootNamespace>NapeHud</RootNamespace>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <InvariantGlobalization>true</InvariantGlobalization>
+    <!-- 単一ファイルで配布し、Windows 側に .NET を入れずに動かす -->
+    <PublishSingleFile>true</PublishSingleFile>
+    <SelfContained>true</SelfContained>
+    <!-- 単一ファイルを圧縮し、ICU を積まないことで 70MB → 十数 MB に落とす。
+         文字コードは Console.OutputEncoding で UTF-8 を明示しているので影響しない。 -->
+    <EnableCompressionInSingleFile>true</EnableCompressionInSingleFile>
+    <InvariantGlobalization>true</InvariantGlobalization>
+    <DebugType>none</DebugType>
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <PublishTrimmed>false</PublishTrimmed>
+    <!-- P/Invoke は Windows 専用。macOS でのビルド時に警告を出させない -->
+    <NoWarn>CA1416</NoWarn>
+  </PropertyGroup>
+
+  <!-- 設定が見つからないとき用の既定値。単一ファイルに埋め込むので、
+       exe だけコピーした Windows 機でも run が動く。
+       あわせて config.json として横に出し、利用者が編集できるようにする。 -->
+  <ItemGroup>
+    <EmbeddedResource Include="../../config.example.json" LogicalName="config.default.json" />
+    <None Include="../../config.example.json" CopyToOutputDirectory="PreserveNewest" Link="config.json" />
+  </ItemGroup>
+
+</Project>
