@@ -8,10 +8,22 @@ Keychron Nape Pro の **レイヤー / OctaShift の向き / DPI** を Windows �
 
 ## インストール
 
-Release から `nape-hud.exe` を落として好きな場所に置くだけです。
-.NET ランタイムの導入は不要（self-contained・単一ファイル）。
+インストール作業はありません。Release から落として好きな場所に置くだけです。
+管理者権限もレジストリ変更も不要で、消すときはファイルを削除するだけです。
 
-動作要件: Windows 10 / 11 の 64bit。管理者権限は不要です。
+| PC | ファイル | .NET |
+|---|---|---|
+| ふつうの Windows 10/11 | `nape-hud-<ver>-win-x64.zip` | 不要 |
+| ARM 版 Windows | `nape-hud-<ver>-win-arm64.zip` | 不要 |
+| 32bit Windows | `nape-hud-<ver>-win-x86.zip` | 不要 |
+| 誤検知・実行制限を避けたい | `nape-hud-<ver>-dotnet.zip`（80KB） | ランタイム 10 が必要 |
+
+exe は**コード署名していない**ので SmartScreen が警告します。「詳細情報」→「実行」、
+または `Unblock-File .\nape-hud.exe`。`SHA256SUMS.txt` でハッシュを照合できます。
+
+止まって動かせない場合の対処は **[INSTALL.md](INSTALL.md)** に症状別でまとめています
+（SmartScreen / ウイルス対策ソフトの誤検知 / CPU 種別の不一致 / 組織のポリシーで
+exe が使えない場合 / 文字化け / ログオン時の自動起動）。
 
 ## 使い方
 
@@ -77,6 +89,9 @@ dotnet publish -c Release -o ../dist
 ```
 
 `../dist/nape-hud.exe` ができます。
+
+配布物一式（3 アーキテクチャ + ランタイム依存版 + `SHA256SUMS.txt`）は
+`windows/make-dist.sh` でまとめて作れます。
 
 ## 検証状況
 
