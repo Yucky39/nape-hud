@@ -1,13 +1,17 @@
-# nape-hud.exe が実行できないときの代替手段
+# Windows 版が実行できないときの代替手段
 
 ## まず前提
 
-**`nape-hud.exe` はインストーラではありません。** 置いて実行するだけの CLI です。
+**インストーラはありません。** 置いて実行するだけです。
 インストール作業も管理者権限もレジストリ変更も不要で、消すときはファイルを削除するだけです。
 
 ```
-> .\nape-hud.exe devices
+> .\nape-hud-gui.exe          GUI（常駐してポップアップを出す）
+> .\nape-hud.exe devices      CLI（コンソールに出す・診断もこちら）
 ```
+
+GUI はフォルダ配布なので、展開したフォルダごと置いてください。
+中の `nape-hud-gui.exe` だけ抜き出すと動きません。
 
 「インストールできない」場合、実際には次のどれかで止まっています。症状から選んでください。
 
@@ -19,6 +23,7 @@
 | exe をダウンロードできない | 組織のポリシー | [4](#4-exe-そのものを持ち込めない) |
 | exe の実行が禁止されている | AppLocker など | [4](#4-exe-そのものを持ち込めない) |
 | 文字が □ や ? になる | コンソールの文字コード | [6](#6-文字化けする) |
+| GUI が起動しても何も起きない | — | [8](#8-gui-が起動しているのにポップアップが出ない) |
 
 ---
 
@@ -53,13 +58,18 @@ Get-FileHash .\nape-hud.exe -Algorithm SHA256
 Add-MpPreference -ExclusionPath "C:\tools\nape-hud"
 ```
 
-**(b) 単一ファイルをやめる** — `nape-hud-<ver>-dotnet.zip` は単一ファイルではない
-通常の .NET アセンブリ（**80KB**）なので、誤検知の対象になりにくいです。
-[.NET 10 ランタイム](https://dotnet.microsoft.com/download/dotnet/10.0)が必要です。
+**(b) 単一ファイルをやめる** — `-dotnet.zip` は単一ファイルではない通常の
+.NET アセンブリ（**50KB 前後**）なので、誤検知の対象になりにくいです。
+[.NET 10](https://dotnet.microsoft.com/download/dotnet/10.0) が必要です
+（CLI はランタイム、GUI は**デスクトップランタイム**）。
 
 ```
-> dotnet nape-hud.dll devices
+> dotnet nape-hud.dll devices        CLI
+> dotnet nape-hud-gui.dll            GUI
 ```
+
+なお GUI のランタイム同梱版はもともと単一ファイルではないので、
+この問題は起きにくいです。
 
 **(c) 自分でビルドする** → [5](#5-ソースからビルドする)。ダウンロードした実行ファイルを
 一切使わないので、この問題自体が起きません。
@@ -76,6 +86,9 @@ CPU の種別が合っていません。Release には 3 種類あります。
 | ふつうの Windows 10/11 | `nape-hud-<ver>-win-x64.zip` |
 | ARM 版 Windows（Snapdragon 機など） | `nape-hud-<ver>-win-arm64.zip` |
 | 32bit Windows | `nape-hud-<ver>-win-x86.zip` |
+
+GUI は x64 版のみです。ARM 機ではエミュレーションで動きます。
+32bit Windows で GUI を使いたい場合はソースからビルドしてください（[5](#5-ソースからビルドする)）。
 
 確認方法:
 
@@ -106,17 +119,20 @@ ARM 機は x64 版もエミュレーションで動きますが、arm64 版の�
 
 ```
 > git clone https://github.com/Yucky39/nape-hud.git
-> cd nape-hud\windows\NapeHudCli
-> dotnet publish -c Release -o ..\dist
+> cd nape-hud\windows
+> dotnet publish NapeHudCli -c Release -o dist          CLI
+> dotnet publish NapeHudGui -c Release -o dist\gui      GUI
 ```
 
-`..\dist\nape-hud.exe` ができます。自分でビルドしたものは Mark of the Web が付かないので
-SmartScreen に止められません。
+自分でビルドしたものは Mark of the Web が付かないので SmartScreen に止められません。
+
+別のアーキテクチャ向けにするなら `-r win-arm64` / `-r win-x86` を付けます。
 
 ビルドせず直接動かすこともできます。
 
 ```
-> dotnet run -- devices
+> dotnet run --project NapeHudCli -- devices
+> dotnet run --project NapeHudGui
 ```
 
 配布物一式（3 アーキテクチャ + ランタイム依存版 + ハッシュ）をまとめて作るなら:
@@ -136,11 +152,15 @@ windows/make-dist.sh
 
 ## 7. ログオン時に自動で動かしたい
 
-macOS 版と違って常駐サービスにはしていません。
+**GUI 版**なら、下の「簡単な方法」で `nape-hud-gui.exe` のショートカットを
+スタートアップに置くのが素直です。常駐アイコンから終了できます。
+
+**CLI 版**を常駐させたい場合、macOS 版と違ってサービスにはしていません。
 
 **簡単な方法** — スタートアップフォルダにショートカットを置きます。管理者権限は不要です。
 
 ```powershell
+# GUI なら $exe を nape-hud-gui.exe にして、Arguments は "" にする
 $exe = "C:\tools\nape-hud\nape-hud.exe"
 $lnk = "$env:APPDATA\Microsoft\Windows\Start Menu\Programs\Startup\nape-hud.lnk"
 $s = (New-Object -ComObject WScript.Shell).CreateShortcut($lnk)
@@ -149,7 +169,8 @@ $s.WorkingDirectory = Split-Path $exe
 $s.Save()
 ```
 
-コンソールウィンドウが 1 つ出たままになります。やめるときは `Remove-Item $lnk`。
+CLI 版だとコンソールウィンドウが 1 つ出たままになります（GUI 版は出ません）。
+やめるときは `Remove-Item $lnk`。
 
 **ウィンドウを出さずログに残す方法** — タスクスケジューラに登録します。
 自分として動くタスクなので通常は管理者権限なしで登録できますが、環境によっては
@@ -173,7 +194,23 @@ Register-ScheduledTask -TaskName "nape-hud" -Action $action `
 コンソールを出したくないので `cmd /c` 経由でログファイルに追記しています。
 やめるときは `Unregister-ScheduledTask -TaskName "nape-hud" -Confirm:$false`。
 
-> CLI 版に画面表示（HUD）はありません。ポップアップが欲しい場合は macOS 版を使ってください。
+> CLI 版に画面表示はありません。ポップアップが欲しい場合は GUI 版を使ってください。
+
+## 8. GUI が起動しているのにポップアップが出ない
+
+通知領域のアイコンを右クリック → **接続状況…** を見てください。
+`0xFF60` の面を掴めていなければ、その接続方式では検出できません
+（Bluetooth では原理的に不可）。
+
+アイコン自体が出ない場合は `hud.showMenuBarIcon` が `false` になっていないか確認してください。
+`false` だと終了操作もできなくなるので、タスクマネージャーから終了させることになります。
+
+表示位置がおかしい / 画面外に出ている場合は `nape-hud-gui.exe --test` で位置を確認し、
+`config.json` の `hud.position`（`topRight` / `topLeft` / `bottomRight` / `bottomLeft` /
+`center`）と `hud.margin` を調整してください。
+
+それでも切り分けられない場合は CLI 版の `run` を試してください。`run` で出るのに
+GUI で出ないなら描画側の問題です。
 
 ## 動いたかどうかの確認手順
 

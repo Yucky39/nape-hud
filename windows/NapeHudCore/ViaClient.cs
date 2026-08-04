@@ -32,7 +32,7 @@ public sealed class ViaClient : IDisposable
         var packet = new byte[1 + req.Length];
         Array.Copy(req, 0, packet, 1, req.Length);
         if (!_hid.Write(packet))
-            throw new AppError($"要求を送信できませんでした（{Program.Hex(req)}）。");
+            throw new AppError($"要求を送信できませんでした（{Fmt.Hex(req)}）。");
 
         var buf = new byte[_hid.InputReportLength];
         var deadline = DateTime.UtcNow.AddMilliseconds(timeoutMs);
@@ -48,7 +48,7 @@ public sealed class ViaClient : IDisposable
             // 要求バイト列が先頭に返るのが VIA の約束。状態通知 0xA3 などは読み飛ばす。
             if (body.Length >= req.Length && body.Take(req.Length).SequenceEqual(req)) return body;
         }
-        throw new AppError($"デバイスが応答しませんでした（{Program.Hex(req)}）。\n"
+        throw new AppError($"デバイスが応答しませんでした（{Fmt.Hex(req)}）。\n"
             + "Keychron Launcher が開いていると応答を取り合うため、閉じてから試してください。");
     }
 

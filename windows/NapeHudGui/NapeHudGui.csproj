@@ -1,23 +1,25 @@
 <Project Sdk="Microsoft.NET.Sdk">
+
   <PropertyGroup>
-    <OutputType>Exe</OutputType>
-    <TargetFramework>net10.0</TargetFramework>
-    <AssemblyName>nape-hud</AssemblyName>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <AssemblyName>nape-hud-gui</AssemblyName>
     <RootNamespace>NapeHud</RootNamespace>
+    <UseWindowsForms>true</UseWindowsForms>
     <Nullable>enable</Nullable>
+    <!-- 画面ごとに拡大率が違っても位置と大きさが崩れないようにする -->
+    <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
     <ImplicitUsings>enable</ImplicitUsings>
-    <InvariantGlobalization>true</InvariantGlobalization>
-    <!-- 単一ファイルで配布し、Windows 側に .NET を入れずに動かす -->
-    <PublishSingleFile>true</PublishSingleFile>
     <SelfContained>true</SelfContained>
-    <!-- 単一ファイルを圧縮し、ICU を積まないことで 70MB → 十数 MB に落とす。
-         文字コードは Console.OutputEncoding で UTF-8 を明示しているので影響しない。 -->
-    <EnableCompressionInSingleFile>true</EnableCompressionInSingleFile>
-    <DebugType>none</DebugType>
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
-    <PublishTrimmed>false</PublishTrimmed>
+    <!-- 単一ファイルにはしない。macOS 上でのバンドル生成が
+         WinForms のファイル集合で失敗するため、フォルダ配布にする。 -->
+    <PublishSingleFile>false</PublishSingleFile>
+    <DebugType>none</DebugType>
     <!-- P/Invoke は Windows 専用。macOS でのビルド時に警告を出させない -->
     <NoWarn>CA1416</NoWarn>
+    <!-- macOS / Linux から Windows 向けにビルドするために必要 -->
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
   </PropertyGroup>
 
   <ItemGroup>

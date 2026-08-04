@@ -189,6 +189,9 @@ public sealed class HidStream : IDisposable
 
     readonly IntPtr _h;
     readonly IntPtr _readEvent, _writeEvent, _readOv, _writeOv, _readBuf, _writeBuf;
+    // Dispose と入出力が重なるとカーネルが解放済みバッファに書き込む。
+    // 読み取りには 250ms 程度の上限があるので、錠で待ち合わせても止まらない。
+    readonly object _io = new();
     bool _closed;
 
     public int InputReportLength { get; }
@@ -222,6 +225,11 @@ public sealed class HidStream : IDisposable
     /// 戻り値: 読めたバイト数 / 0 = タイムアウト / -1 = 失敗（切断など）。
     /// </summary>
     public int Read(byte[] dest, int timeoutMs)
+    {
+        lock (_io) return ReadLocked(dest, timeoutMs);
+    }
+
+    int ReadLocked(byte[] dest, int timeoutMs)
     {
         if (_closed) return -1;
         ResetEvent(_readEvent);
@@ -259,6 +267,11 @@ public sealed class HidStream : IDisposable
     /// </summary>
     public bool Write(byte[] src, int timeoutMs = 1000)
     {
+        lock (_io) return WriteLocked(src, timeoutMs);
+    }
+
+    bool WriteLocked(byte[] src, int timeoutMs)
+    {
         if (_closed || !CanWrite) return false;
         for (int i = 0; i < OutputReportLength; i++)
             Marshal.WriteByte(_writeBuf, i, i < src.Length ? src[i] : (byte)0);
@@ -281,9 +294,15 @@ public sealed class HidStream : IDisposable
 
     public void Dispose()
     {
+        // 読み取り中でも 250ms 以内には錠が空く。取り消しは先に投げて待ち時間を縮める。
+        CancelIoEx(_h, IntPtr.Zero);
+        lock (_io) DisposeLocked();
+    }
+
+    void DisposeLocked()
+    {
         if (_closed) return;
         _closed = true;
-        CancelIoEx(_h, IntPtr.Zero);      // このハンドルの保留中 I/O をすべて取り消す
         WinHid.CloseHandle(_h);
         WinHid.CloseHandle(_readEvent);
         WinHid.CloseHandle(_writeEvent);

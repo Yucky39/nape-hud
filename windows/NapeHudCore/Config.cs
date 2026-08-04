@@ -16,8 +16,11 @@ public sealed class Config
     public List<Rule> Rules { get; set; } = new();
     public CalibrationConfig Calibration { get; set; } = new();
     public KeymapConfig Keymap { get; set; } = new();
-    /// <summary>レイヤー番号の表示補正。macOS 版の hud.layerNumberOffset と同じ意味。</summary>
-    [JsonIgnore] public int LayerNumberOffset { get; set; }
+    /// <summary>表示に関する設定。CLI 版が使うのは layerNumberOffset だけ。</summary>
+    public HudConfig Hud { get; set; } = new();
+
+    /// <summary>レイヤー番号の表示補正。よく使うので短縮形を用意しておく。</summary>
+    [JsonIgnore] public int LayerNumberOffset => Hud.LayerNumberOffset;
 
     static readonly JsonSerializerOptions Opts = new()
     {
@@ -37,19 +40,7 @@ public sealed class Config
             if (!File.Exists(p)) continue;
             usedPath = p;
             var json = File.ReadAllText(p);
-            var c = JsonSerializer.Deserialize<Config>(json, Opts) ?? new Config();
-            // hud は GUI 専用だが layerNumberOffset だけ CLI でも意味がある
-            try
-            {
-                using var doc = JsonDocument.Parse(json, new JsonDocumentOptions
-                { CommentHandling = JsonCommentHandling.Skip, AllowTrailingCommas = true });
-                if (doc.RootElement.TryGetProperty("hud", out var hud)
-                    && hud.TryGetProperty("layerNumberOffset", out var off)
-                    && off.TryGetInt32(out var v))
-                    c.LayerNumberOffset = v;
-            }
-            catch { /* hud が無くても構わない */ }
-            return c;
+            return JsonSerializer.Deserialize<Config>(json, Opts) ?? new Config();
         }
         if (explicitPath != null)
         {
@@ -67,15 +58,34 @@ public sealed class Config
         return new Config();
     }
 
-    /// <summary>埋め込んだ config.example.json を読む。</summary>
-    static Config? Builtin()
+    /// <summary>埋め込んだ既定の設定ファイルの中身。無ければ null。</summary>
+    public static string? DefaultJson()
     {
         try
         {
             using var st = typeof(Config).Assembly.GetManifestResourceStream("config.default.json");
             if (st == null) return null;
             using var r = new StreamReader(st);
-            var json = r.ReadToEnd();
+            return r.ReadToEnd();
+        }
+        catch { return null; }
+    }
+
+    /// <summary>設定が無いときに使う場所（%APPDATA%\nape-hud\config.json）。</summary>
+    public static string PreferredPath()
+    {
+        var appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
+        return Path.Combine(appData.Length > 0 ? appData : AppContext.BaseDirectory,
+                            "nape-hud", "config.json");
+    }
+
+    /// <summary>埋め込んだ config.example.json を読む。</summary>
+    static Config? Builtin()
+    {
+        try
+        {
+            var json = DefaultJson();
+            if (json == null) return null;
             var c = JsonSerializer.Deserialize<Config>(json, Opts);
             return c != null && c.Rules.Count > 0 ? c : null;
         }
@@ -232,6 +242,31 @@ public sealed class CalibrationConfig
     public int Positions { get; set; } = 8;
     public int? AngleZeroCode { get; set; }
     public bool Clockwise { get; set; } = true;
+}
+
+/// <summary>
+/// 表示の設定。macOS 版の HUDConfig と同じキーを読む。
+/// CLI 版は layerNumberOffset だけ、GUI 版は全部使う。
+/// </summary>
+public sealed class HudConfig
+{
+    /// <summary>ポップアップを出しておく秒数。</summary>
+    public double Seconds { get; set; } = 2.2;
+    /// <summary>topLeft / topRight / bottomLeft / bottomRight / center。</summary>
+    public string Position { get; set; } = "topRight";
+    public double Margin { get; set; } = 28;
+    public double Scale { get; set; } = 1.0;
+    public bool ShowConnection { get; set; } = true;
+    public bool ShowOnConnectionChange { get; set; } = true;
+    /// <summary>OctaShift の向きを 8 方向のダイヤル図で描く。</summary>
+    public bool ShowAngleDial { get; set; } = true;
+    /// <summary>マウスがある画面に出す。false なら主ディスプレイ。</summary>
+    public bool FollowsMouseScreen { get; set; } = true;
+    /// <summary>通知領域に常駐する。false にすると終了操作ができなくなる。</summary>
+    public bool ShowMenuBarIcon { get; set; } = true;
+    /// <summary>常駐アイコンに現在のレイヤー番号を出す。</summary>
+    public bool MenuBarShowsLayer { get; set; } = true;
+    public int LayerNumberOffset { get; set; }
 }
 
 public sealed class KeymapConfig

@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- CLI 版と GUI 版で共有する部分。設定の読み込み・復号・HID アクセス。
+       ここに UI は入れない。 -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <RootNamespace>NapeHud</RootNamespace>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <!-- P/Invoke は Windows 専用。macOS からのビルドでも警告にしない -->
+    <NoWarn>CA1416</NoWarn>
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
+  </PropertyGroup>
+
+  <!-- 設定が見つからないときの既定値。実行ファイルに埋め込むので
+       exe だけ持っていった環境でも動く。 -->
+  <ItemGroup>
+    <EmbeddedResource Include="../../config.example.json" LogicalName="config.default.json" />
+  </ItemGroup>
+
+</Project>

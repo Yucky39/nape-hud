@@ -25,9 +25,9 @@ public static class KeymapReport
         o.Add("");
 
         int w = 12;
-        var header = Pad("レイヤー", 16);
-        for (int c = 0; c < Math.Max(s.KeysPerLayer, 1); c++) header += Pad($"col{c}", w);
-        header += Pad("ダイヤル↻", w) + Pad("ダイヤル↺", w);
+        var header = Fmt.Pad("レイヤー", 16);
+        for (int c = 0; c < Math.Max(s.KeysPerLayer, 1); c++) header += Fmt.Pad($"col{c}", w);
+        header += Fmt.Pad("ダイヤル↻", w) + Fmt.Pad("ダイヤル↺", w);
         o.Add(header);
         o.Add(new string('-', 16 + (s.KeysPerLayer + 2) * w));
 
@@ -35,15 +35,15 @@ public static class KeymapReport
         for (int l = 0; l < s.LayerCount; l++)
         {
             var row = l < s.Keymap.Count ? s.Keymap[l] : Array.Empty<ushort>();
-            var line = Pad($"{l}: {cfg.LayerNameByNumber(l)}", 16);
+            var line = Fmt.Pad($"{l}: {cfg.LayerNameByNumber(l)}", 16);
             for (int k = 0; k < s.KeysPerLayer; k++)
             {
                 ushort code = k < row.Length ? row[k] : (ushort)0;
                 if (code >= 0x7E00) vendor.Add(code);
-                line += Pad(Keycode.ShortName(code), w);
+                line += Fmt.Pad(Keycode.ShortName(code), w);
             }
             var enc = l < s.Encoders.Count ? s.Encoders[l] : ((ushort)0, (ushort)0);
-            line += Pad(Keycode.ShortName(enc.Item1), w) + Pad(Keycode.ShortName(enc.Item2), w);
+            line += Fmt.Pad(Keycode.ShortName(enc.Item1), w) + Fmt.Pad(Keycode.ShortName(enc.Item2), w);
             o.Add(line);
         }
 
@@ -65,19 +65,4 @@ public static class KeymapReport
         return string.Join(Environment.NewLine, o);
     }
 
-    /// <summary>全角を 2 桁として数え、等幅で桁を揃える。</summary>
-    internal static string Pad(string s, int width)
-    {
-        int w = s.Sum(c => IsWide(c) ? 2 : 1);
-        return s + new string(' ', Math.Max(1, width - w));
-    }
-
-    static bool IsWide(char c)
-    {
-        int v = c;
-        return (v >= 0x1100 && v <= 0x115F) || (v >= 0x2E80 && v <= 0xA4CF)
-            || (v >= 0xAC00 && v <= 0xD7A3) || (v >= 0xF900 && v <= 0xFAFF)
-            || (v >= 0xFE30 && v <= 0xFE6F) || (v >= 0xFF00 && v <= 0xFF60)
-            || (v >= 0xFFE0 && v <= 0xFFE6) || v == 0x21BB || v == 0x21BA;
-    }
 }

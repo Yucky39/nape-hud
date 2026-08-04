@@ -165,64 +165,21 @@ public static class Program
 
     // MARK: 監視の共通部分
 
-    /// <summary>
-    /// 設定に一致し、かつ監視対象の面を持つデバイスを開いて読み続ける。
-    /// 面ごとに 1 スレッドなので、コールバックは直列化して渡す
-    /// （StateDecoder も sniff の集計もスレッド安全ではない）。
-    /// </summary>
-    static void ReadReports(Action<WinHid.DeviceInfo, byte, byte[]> onReport, CancellationToken token)
+    /// <summary>Core の DeviceMonitor に委譲する。GUI 版と同じ読み取り経路を使う。</summary>
+    static DeviceMonitor ReadReports(DeviceMonitor.ReportHandler onReport, CancellationToken token)
     {
-        var pages = _cfg.Device.UsagePages;
-        var targets = WinHid.Enumerate()
-            .Where(d => _cfg.Device.Matches(d.VendorId, d.ProductId, d.Product))
-            .Where(d => pages.Count == 0 || pages.Contains(d.UsagePage))
-            .Where(d => d.InputReportLength > 0)
-            .ToList();
-
-        if (targets.Count == 0)
-            throw new AppError("監視できるインターフェースがありません。`nape-hud devices` で状況を確認してください。");
-
-        foreach (var t in targets)
+        var mon = new DeviceMonitor(_cfg, onReport, token);
+        foreach (var t in mon.Targets)
             Console.Error.WriteLine($"監視: {t.Product} 0x{t.UsagePage:X4}/0x{t.Usage:X2} in={t.InputReportLength}B");
-
-        var gate = new object();
-        var threads = new List<Thread>();
-        foreach (var t in targets)
-        {
-            var stream = WinHid.Open(t);
-            if (stream == null)
-            {
-                Console.Error.WriteLine($"開けません: {t.Product} 0x{t.UsagePage:X4}（OS が排他している可能性）");
-                continue;
-            }
-            var th = new Thread(() =>
-            {
-                var buf = new byte[stream.InputReportLength];
-                while (!token.IsCancellationRequested)
-                {
-                    // 無限待ちにすると Ctrl-C で抜けられないので、区切って待つ
-                    int n = stream.Read(buf, 250);
-                    if (n == 0) continue;         // タイムアウト
-                    if (n < 0) break;             // 切断
-                    if (n < 2) continue;
-                    // Windows の HID 読み出しは先頭がレポート ID
-                    var bytes = new byte[n - 1];
-                    Array.Copy(buf, 1, bytes, 0, n - 1);
-                    lock (gate) onReport(t, buf[0], bytes);
-                }
-                stream.Dispose();
-            }) { IsBackground = true };
-            th.Start();
-            threads.Add(th);
-        }
-        if (threads.Count == 0) throw new AppError("どのインターフェースも開けませんでした。");
+        foreach (var f in mon.Failures) Console.Error.WriteLine("開けません: " + f);
+        return mon;
     }
 
     static int Run()
     {
         var decoder = new StateDecoder(_cfg.Rules);
         decoder.OnUnmapped = (field, raw, bytes) =>
-            Console.Error.WriteLine($"⚠️  対応表に無い{field}の値 0x{raw:X2} ({raw})  レポート: {Hex(bytes)}");
+            Console.Error.WriteLine($"⚠️  対応表に無い{field}の値 0x{raw:X2} ({raw})  レポート: {Fmt.Hex(bytes)}");
 
         using var cts = new CancellationTokenSource();
         Console.CancelKeyPress += (_, e) => { e.Cancel = true; cts.Cancel(); };
@@ -353,7 +310,7 @@ public static class Program
                 ChangeKind.DpiPrimary => $"DPI 主役 → {DpiText(ch.Value.Value)}",
                 _ => "直前表示の再掲",
             };
-            Console.WriteLine($"  {cmd:X2} {L:X2} {D:X2} {P:X2} …  {KeymapReport.Pad(note, 30)}{desc}");
+            Console.WriteLine($"  {cmd:X2} {L:X2} {D:X2} {P:X2} …  {Fmt.Pad(note, 30)}{desc}");
 
             bool ok = note.StartsWith("レイヤーのみ") ? ch?.Kind == ChangeKind.LayerPrimary
                     : note.StartsWith("向きのみ") ? ch?.Kind == ChangeKind.AnglePrimary
@@ -377,7 +334,4 @@ public static class Program
     static string DpiText(CodedValue d) =>
         d.Value.HasValue ? _cfg.DpiName(d.Value.Value) : $"段 0x{d.Code:X2}（DPI 値 未設定）";
 
-    internal static string Hex(byte[] b, int limit = 8) =>
-        string.Join(" ", b.Take(limit).Select(x => x.ToString("X2")))
-        + (b.Length > limit ? $" …({b.Length}B)" : "");
 }
