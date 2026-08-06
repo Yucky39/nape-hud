@@ -26,6 +26,8 @@
     "scale": 1.0,
     "showConnection": true,
     "showOnConnectionChange": true,
+    "//showBattery": "無線接続（2.4GHz/BT）時のみバッテリー残量（％）を接続表示の横に添える。有線では出さない",
+    "showBattery": true,
     "showAngleDial": true,
     "followsMouseScreen": true,
 
@@ -134,6 +136,28 @@
         "map": { "0": 800, "1": 1200, "2": 1600, "3": 2400, "4": 3200 }
       },
       "notify": "onChange"
+    },
+    {
+      "name": "FF60 cmd=0xA7 sub=0x30 バッテリー残量（learn とは別に実機 sniff で確定）",
+      "//": [
+        "`A7 30 <残量> 00 …` の並び。offset 2 の生値がそのままパーセント（0〜100）。",
+        "Keychron Launcher の表示と実測で一致確認済み。",
+        "自発的に届く間隔は不定（下の poll コメント参照）。安定して更新したいなら poll を有効にする。",
+        "cmd=0xA7 には他のサブタイプ（0x21/0x26/0x38 など、センサ関連らしき値）も多重化されているため、",
+        "match で offset 1 = 0x30 まで指定して battery 以外の A7 応答を誤読しないようにしている。",
+        "offset 2 の notEquals:[0] は、poll 直後に届く「まだ取得できていません」のプレースホルダ",
+        "応答（残量 0 固定）を実際の残量として拾わないための除外（下の poll コメント参照）。"
+      ],
+      "usagePage": 65376,
+      "usage": 97,
+      "reportId": 0,
+      "minLength": 3,
+      "match": [
+        { "offset": 0, "equals": [167] },
+        { "offset": 1, "equals": [48] },
+        { "offset": 2, "notEquals": [0] }
+      ],
+      "battery": { "offset": 2 }
     }
   ],
 
@@ -297,13 +321,27 @@
     "perLayerGain": {}
   },
 
-  "//poll": "デバイスが自発通知しない場合、こちらから状態を問い合わせる。request は送るバイト列。",
+  "//poll": [
+    "デバイスが自発通知しない場合、こちらから状態を問い合わせる。request は送るバイト列。",
+    "",
+    "バッテリー残量（rules[].battery）に使う場合の実測値:",
+    "  request: [0xA7, 0x30]（167, 48）を送ると、直後に cmd=0xA7 sub=0x30 の応答が",
+    "  0（未取得のプレースホルダ）で 1 回返り、その ~100ms 後くらいに実際の残量を",
+    "  乗せた同じ cmd=0xA7 sub=0x30 が非同期でもう 1 回届く（センサ読み取りに時間がかかる模様）。",
+    "  そのため rules[].battery の match には offset 2 の notEquals:[0] を必ず入れて、",
+    "  プレースホルダ応答（残量 0%）を実際の値として拾わないようにすること。",
+    "  ボタン操作と違って自発通知の間隔は不定（数十秒〜届かないことも）なので、",
+    "  安定して表示したいなら poll を有効にするのが確実。intervalMs は 15000〜30000 程度で十分",
+    "  （残量は数秒単位では変わらないので、無線帯域を無駄に使わない値にする）。",
+    "  有線 (USB) では battery の応答自体は来る場合もあるが、hud.showBattery は",
+    "  無線接続時のみ表示するようにしているので害はない。"
+  ],
   "poll": {
     "enabled": false,
     "usagePage": 65376,
     "usage": 97,
     "reportId": 0,
-    "request": [1, 0, 0, 0],
-    "intervalMs": 500
+    "request": [167, 48],
+    "intervalMs": 20000
   }
 }

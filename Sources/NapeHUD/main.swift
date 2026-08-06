@@ -126,6 +126,15 @@ func dpiTitle(_ d: CodedValue) -> String {
     return "\(v) DPI"
 }
 
+/// バッテリー残量に応じたアイコン。低残量（20%未満）だけ空バッテリーで警告する。
+func batteryIcon(_ percent: Int) -> String { percent < 20 ? "🪫" : "🔋" }
+
+/// バッテリー残量の表示名（アイコン + ％表記）。
+func batteryTitle(_ b: CodedValue) -> String {
+    let v = b.value ?? b.code
+    return "\(batteryIcon(v)) \(v)%"
+}
+
 // MARK: - モード分岐
 
 switch mode {
@@ -235,6 +244,7 @@ case "doctor":
         if r.layer != nil, !acc.contains("レイヤー") { acc.append("レイヤー") }
         if r.angle != nil, !acc.contains("向き") { acc.append("向き") }
         if r.dpi != nil, !acc.contains("DPI") { acc.append("DPI") }
+        if r.battery != nil, !acc.contains("バッテリー") { acc.append("バッテリー") }
     }
     print("検出対象          : \(fields.isEmpty ? "⚠️ なし" : fields.joined(separator: " / "))")
     // DPI は段番号しか届かないので、実 DPI 値への変換表が入っているかを明示する
@@ -759,7 +769,11 @@ case "run":
         let headline = st.layer.map { "Layer \(displayLayer($0)) — \(layerName($0))" } ?? "レイヤー 未検出"
         let detail = [st.angle.map(angleTitle), st.dpi.map(dpiTitle)]
             .compactMap { $0 }.joined(separator: "   ·   ")
-        let conn = mon.interfaceSummary.isEmpty ? nil : mon.activeConnection.symbol
+        var conn = mon.interfaceSummary.isEmpty ? nil : mon.activeConnection.symbol
+        // 無線接続時のみバッテリー残量を接続バッジに添える（有線では意味が無い）
+        if config.hud.showBattery, mon.activeConnection != .usb, let b = st.battery {
+            conn = [conn, batteryTitle(b)].compactMap { $0 }.joined(separator: "  ·  ")
+        }
         status.update(headline: headline, detail: detail, connection: conn,
                       layerBadge: st.layer.map(String.init))
     }
@@ -771,6 +785,8 @@ case "run":
         let layerMeta = st.layer.map { layerName($0) }
         let angleMeta = st.angle.map(angleTitle)
         let dpiMeta = st.dpi.map(dpiTitle)
+        // バッテリー残量は無線接続時のみ（有線では意味が無い）
+        let batteryMeta = (config.hud.showBattery && connection != .usb) ? st.battery.map(batteryTitle) : nil
         let content: HUDContent?
 
         switch change {
@@ -780,7 +796,7 @@ case "run":
                 title: "Layer \(displayLayer(l))",
                 subtitle: layerName(l),
                 angle: st.angle?.value,
-                meta: [angleMeta, dpiMeta].compactMap { $0 },
+                meta: [angleMeta, dpiMeta, batteryMeta].compactMap { $0 },
                 connection: conn)
 
         case .anglePrimary(let a):
@@ -789,7 +805,7 @@ case "run":
                 title: "OctaShift",
                 subtitle: angleTitle(a),
                 angle: a.value,
-                meta: [layerMeta, dpiMeta].compactMap { $0 },
+                meta: [layerMeta, dpiMeta, batteryMeta].compactMap { $0 },
                 connection: conn)
 
         case .dpiPrimary(let d):
@@ -798,7 +814,7 @@ case "run":
                 title: "DPI",
                 subtitle: dpiTitle(d),
                 angle: st.angle?.value,
-                meta: [layerMeta, angleMeta].compactMap { $0 },
+                meta: [layerMeta, angleMeta, batteryMeta].compactMap { $0 },
                 connection: conn)
 
         case .repeatLast:

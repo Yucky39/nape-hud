@@ -105,6 +105,7 @@ extension HUDConfig {
         scale = c.opt(.scale, scale)
         showConnection = c.opt(.showConnection, showConnection)
         showOnConnectionChange = c.opt(.showOnConnectionChange, showOnConnectionChange)
+        showBattery = c.opt(.showBattery, showBattery)
         showAngleDial = c.opt(.showAngleDial, showAngleDial)
         followsMouseScreen = c.opt(.followsMouseScreen, followsMouseScreen)
         showMenuBarIcon = c.opt(.showMenuBarIcon, showMenuBarIcon)
@@ -126,6 +127,7 @@ extension Rule {
         layer = c.optNil(.layer)
         angle = c.optNil(.angle)
         dpi = c.optNil(.dpi)
+        battery = c.optNil(.battery)
         notify = c.opt(.notify, notify)
     }
 }

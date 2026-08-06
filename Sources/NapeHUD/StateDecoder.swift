@@ -14,6 +14,9 @@ struct DeviceState: Equatable {
     var layer: Int?
     var angle: CodedValue?
     var dpi: CodedValue?
+    /// バッテリー残量（％）。ボタン操作とは無関係に自発的に届くので、
+    /// 主役表示のトリガーにはせず、届いた時点で静かに更新するだけにする。
+    var battery: CodedValue?
 }
 
 /// 何を主役に表示するか。
@@ -58,11 +61,21 @@ final class StateDecoder {
             let newLayer = rule.layer?.extract(ev.bytes)
             let newAngle = coded(rule.angle, ev.bytes)
             let newDPI = coded(rule.dpi, ev.bytes)
+            let newBattery = coded(rule.battery, ev.bytes)
 
             warnIfUnmapped("向き", newAngle, ev.bytes)
             warnIfUnmapped("DPI", newDPI, ev.bytes)
 
-            if newLayer == nil && newAngle == nil && newDPI == nil { continue }
+            if newLayer == nil && newAngle == nil && newDPI == nil && newBattery == nil { continue }
+            if let b = newBattery { state.battery = b }
+
+            // バッテリーだけの更新ならポップアップは出さず、値を控えるだけにする
+            // （~30 秒おきに自発的に届くため、毎回表示すると邪魔になる）。
+            guard newLayer != nil || newAngle != nil || newDPI != nil else {
+                onMatched?(rule, ev.bytes, state)
+                return nil
+            }
+
             let change = apply(layer: newLayer, angle: newAngle, dpi: newDPI,
                                always: rule.notifiesAlways)
             onMatched?(rule, ev.bytes, state)

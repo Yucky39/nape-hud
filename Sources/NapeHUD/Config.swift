@@ -94,6 +94,8 @@ struct HUDConfig: Codable {
     var scale: Double = 1.0
     var showConnection: Bool = true
     var showOnConnectionChange: Bool = true
+    /// 無線接続（2.4GHz / BT）のときにバッテリー残量（％）を表示するか。有線 (USB) では出さない。
+    var showBattery: Bool = true
     var showAngleDial: Bool = true
     var followsMouseScreen: Bool = true
     /// メニューバー常駐項目を出すか。false にすると終了手段が SIGTERM だけになるので注意。
@@ -108,7 +110,7 @@ struct HUDConfig: Codable {
 
     enum CodingKeys: String, CodingKey {
         case seconds, position, margin, scale, showConnection, showOnConnectionChange,
-             showAngleDial, followsMouseScreen, showMenuBarIcon, menuBarShowsLayer,
+             showBattery, showAngleDial, followsMouseScreen, showMenuBarIcon, menuBarShowsLayer,
              layerNumberOffset
     }
 }
@@ -127,6 +129,10 @@ struct Rule: Codable {
     var angle: FieldSpec?
     /// DPI（CPI）段。実測では Nape Pro は offset 3 に 0x00〜0x04 の 5 段を返す。
     var dpi: FieldSpec?
+    /// バッテリー残量（％）。実測では cmd=0xA7（`match` で offset 1 = 0x30 を指定）の
+    /// offset 2 に 0〜100 の値がそのまま入る。ドングル/BT 経由で ~30 秒おきに自発的に届く
+    /// （ボタン操作は不要）。map は不要（生値がそのままパーセント）。
+    var battery: FieldSpec?
     /// always   … 一致したレポートが来たら毎回ポップアップ（既定）
     /// onChange … 値が前回と変わったときだけポップアップ
     ///
@@ -135,7 +141,7 @@ struct Rule: Codable {
     var notify: String = "always"
 
     enum CodingKeys: String, CodingKey {
-        case name, usagePage, usage, reportId, minLength, match, layer, angle, dpi, notify
+        case name, usagePage, usage, reportId, minLength, match, layer, angle, dpi, battery, notify
     }
 
     var notifiesAlways: Bool { notify.lowercased() != "onchange" }
@@ -154,12 +160,15 @@ struct ByteMatch: Codable {
     var offset: Int
     /// いずれかに一致すれば OK
     var equals: [Int]?
+    /// いずれかに一致したら NG（equals と併用可）
+    var notEquals: [Int]?
     var mask: Int?
 
     func matches(_ b: [UInt8]) -> Bool {
         guard offset >= 0, offset < b.count else { return false }
         var v = Int(b[offset])
         if let m = mask { v &= m }
+        if let ne = notEquals, ne.contains(v) { return false }
         guard let eq = equals, !eq.isEmpty else { return true }
         return eq.contains(v)
     }
